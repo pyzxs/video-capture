@@ -1,0 +1,24 @@
+{
+  "name": "video-capture-gui",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0",
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.4.0",
+    "electron": "^33.0.0",
+    "concurrently": "^9.0.0",
+    "wait-on": "^8.0.0"
+  },
+  "main": "electron/main.js"
+}

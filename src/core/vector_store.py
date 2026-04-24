@@ -4,6 +4,8 @@ from chromadb import EmbeddingFunction
 from chromadb.config import Settings
 
 from src.config import (
+    EMBEDDING_DEVICE,
+    EMBEDDING_MODE,
     EMBEDDING_MODEL,
     SILICONFLOW_API_KEY,
     SILICONFLOW_EMBEDDING_URL,
@@ -36,15 +38,33 @@ class SiliconFlowEmbeddingFunction(EmbeddingFunction):
         return [d["embedding"] for d in data["data"]]
 
 
+class LocalEmbeddingFunction(EmbeddingFunction):
+    """基于本地 sentence-transformers 模型的 ChromaDB 嵌入函数。"""
+
+    def __init__(self, model_name: str = EMBEDDING_MODEL, device: str = EMBEDDING_DEVICE):
+        from sentence_transformers import SentenceTransformer
+        self._model = SentenceTransformer(model_name, device=device)
+
+    def __call__(self, input: list[str]) -> list[list[float]]:
+        emb = self._model.encode(input, show_progress_bar=False)
+        return emb.tolist()
+
+
 class VectorStore:
     """ChromaDB 封装的素材向量存储与搜索。"""
 
     def __init__(self):
-        embed_fn = SiliconFlowEmbeddingFunction(
-            api_key=SILICONFLOW_API_KEY,
-            model=EMBEDDING_MODEL,
-            url=SILICONFLOW_EMBEDDING_URL,
-        )
+        if EMBEDDING_MODE == "local":
+            embed_fn = LocalEmbeddingFunction(
+                model_name=EMBEDDING_MODEL,
+                device=EMBEDDING_DEVICE,
+            )
+        else:
+            embed_fn = SiliconFlowEmbeddingFunction(
+                api_key=SILICONFLOW_API_KEY,
+                model=EMBEDDING_MODEL,
+                url=SILICONFLOW_EMBEDDING_URL,
+            )
         self.client = chromadb.PersistentClient(
             path=str(VECTOR_DB_PATH),
             settings=Settings(anonymized_telemetry=False),
@@ -63,25 +83,36 @@ class VectorStore:
             metadatas=[metadata or {}],
         )
 
-    def add_materials_batch(self, items: list[tuple[int, str, dict]]):
-        """批量添加多个素材。
+    def add_materials_batch(self, items: list[tuple[int, str, dict]], batch_size: int = 50):
+        """批量添加多个素材，自动分块避免 API 请求过大。
 
         参数：
             items: (material_id, content, metadata) 元组列表
+            batch_size: 每批最大条数（硅基流动建议 ≤50）
         """
         if not items:
             return
-        self.collection.add(
-            ids=[str(item[0]) for item in items],
-            documents=[item[1] for item in items],
-            metadatas=[item[2] for item in items],
-        )
+        total = len(items)
+        for i in range(0, total, batch_size):
+            batch = items[i : i + batch_size]
+            self.collection.add(
+                ids=[str(item[0]) for item in batch],
+                documents=[item[1] for item in batch],
+                metadatas=[item[2] for item in batch],
+            )
 
-    def search(self, query: str, top_k: int = 5):
-        """搜索匹配查询文本的素材。"""
+    def search(self, query: str, top_k: int = 5, where: dict | None = None):
+        """搜索匹配查询文本的素材。
+
+        参数：
+            query: 搜索文本
+            top_k: 返回结果数
+            where: ChromaDB 元数据过滤条件，如 {"frame_width": 1920}
+        """
         results = self.collection.query(
             query_texts=[query],
             n_results=top_k,
+            where=where,
         )
         return results
 

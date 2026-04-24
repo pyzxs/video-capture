@@ -18,12 +18,20 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
 SILICONFLOW_EMBEDDING_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1") + "/embeddings"
 
+# 嵌入模式: "api" 使用硅基流动, "local" 使用本地模型
+EMBEDDING_MODE = os.getenv("EMBEDDING_MODE", "api")
+# 本地嵌入模型的运行设备（cpu / cuda / cuda:0 等）
+EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
+
 # ASR 模型（Whisper）：tiny, base, small, medium, large
 ASR_MODEL_SIZE = os.getenv("ASR_MODEL", "base")
 WHISPER_MODEL_DIR = Path(os.getenv("WHISPER_MODEL_DIR", str(MODEL_DIR / "whisper")))
 
 # 处理后的视频输出目录
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "videos/material")).resolve()
+
+# 上传的原始视频存储目录
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "videos/uploaded")).resolve()
 
 # LLM API 密钥（兼容 Anthropic 格式，如 DeepSeek）
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

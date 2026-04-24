@@ -54,7 +54,7 @@ def concat_videos(clip_paths: list[str], output_path: str) -> str:
     clip_paths = valid_paths
 
     # 创建临时文件列表（绝对路径）
-    list_path = OUTPUT_DIR / f"_concat_{os.getpid()}.txt"
+    list_path = output.parent / f"_concat_{os.getpid()}.txt"
     try:
         with open(list_path, "w", encoding="utf-8") as f:
             for p in clip_paths:

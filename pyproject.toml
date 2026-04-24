@@ -13,10 +13,20 @@ dependencies = [
     "pytest",
     "requests",
     "torchaudio",
+    "typer>=0.24.2",
+    "fastapi>=0.136.1",
+    "uvicorn>=0.34.0",
+    "python-multipart>=0.0.20",
 ]
 
 [project.optional-dependencies]
-tts = ["cosyvoice", "torch", "torchaudio"]
+tts = [
+ "torch",
+ "torchaudio",
+]
+local = [
+    "sentence-transformers>=3.0",
+]
 test = ["pytest>=8.0", "responses>=0.25"]
 
 [tool.pytest.ini_options]

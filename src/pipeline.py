@@ -1,11 +1,12 @@
 """编排视频处理和字幕生成流水线。"""
 
+from datetime import datetime
 from pathlib import Path
 
 from src.config import OUTPUT_DIR, SUBTITLE_CROP_BOTTOM
 from src.core.database import get_session, init_db
 from src.core.vector_store import VectorStore
-from src.models.models import Material, Video
+from src.models.models import GeneratedVideo, GeneratedVideoMaterial, Material, Video
 from src.processing.paragraph import merge_into_paragraphs
 from src.processing.video import (
     extract_audio,
@@ -62,13 +63,16 @@ def process_video(video_path: str, language: str = "zh") -> dict:
     vocals_path = separate_vocals(audio_path)
     print(f"  → 人声已分离: {Path(vocals_path).name}")
 
-    print(f"[5/6] 正在分割视频片段并存储到数据库...")
+    print(f"[5/6] 正在分割视频片段并分批存储...")
     session = get_session()
     video_stem = video_path.stem
-    material_ids = []
+    store = VectorStore()
+    total_materials = 0
+    batch_size = 20
 
     try:
         # 记录源视频信息
+        full_text = " ".join(p["text"] for p in paragraphs)
         source_video = Video(
             filename=video_path.name,
             filepath=str(video_path.resolve()),
@@ -76,70 +80,79 @@ def process_video(video_path: str, language: str = "zh") -> dict:
             frame_width=meta["frame_width"],
             frame_height=meta["frame_height"],
             frame_rate=meta["frame_rate"],
+            content=full_text,
         )
         session.add(source_video)
         session.flush()
 
-        for i, p in enumerate(paragraphs):
-            clip_filename = f"{video_stem}_clip_{i:04d}.mp4"
-            clip_path = str(OUTPUT_DIR / clip_filename)
+        for batch_start in range(0, len(paragraphs), batch_size):
+            batch = paragraphs[batch_start : batch_start + batch_size]
+            batch_ids = []
 
-            # 去除人声和音乐，如有配置则裁掉底部字幕区域
-            crop = None
-            if SUBTITLE_CROP_BOTTOM > 0:
-                crop_h = meta["frame_height"] - SUBTITLE_CROP_BOTTOM
-                if crop_h % 2 != 0:
-                    crop_h -= 1  # h264 要求偶数高度
-                crop = f"{meta['frame_width']}:{crop_h}:0:0"
-            split_video_clip(
-                video_path=str(video_path),
-                vocals_path=vocals_path,
-                start=p["start"],
-                end=p["end"],
-                output_path=clip_path,
-                crop=crop,
-            )
+            for i, p in enumerate(batch):
+                idx = batch_start + i
+                clip_filename = f"{video_stem}_clip_{idx:04d}.mp4"
+                clip_path = str(OUTPUT_DIR / clip_filename)
 
-            material = Material(
-                type="video",
-                content=p["text"],
-                start_time=p["start"],
-                end_time=p["end"],
-                frame_width=meta["frame_width"],
-                frame_height=meta["frame_height"],
-                frame_rate=meta["frame_rate"],
-                filename=clip_filename,
-                filepath=clip_path,
-            )
-            session.add(material)
-            session.flush()
-            material_ids.append(material.id)
+                # 去除人声和音乐，如有配置则裁掉底部字幕区域
+                crop = None
+                if SUBTITLE_CROP_BOTTOM > 0:
+                    crop_h = meta["frame_height"] - SUBTITLE_CROP_BOTTOM
+                    if crop_h % 2 != 0:
+                        crop_h -= 1  # h264 要求偶数高度
+                    crop = f"{meta['frame_width']}:{crop_h}:0:0"
+                split_video_clip(
+                    video_path=str(video_path),
+                    vocals_path=vocals_path,
+                    start=p["start"],
+                    end=p["end"],
+                    output_path=clip_path,
+                    crop=crop,
+                )
 
-        session.commit()
-        print(f"  → 生成了 {len(paragraphs)} 个素材片段")
+                material = Material(
+                    type="video",
+                    content=p["text"],
+                    start_time=p["start"],
+                    end_time=p["end"],
+                    frame_width=meta["frame_width"],
+                    frame_height=meta["frame_height"],
+                    frame_rate=meta["frame_rate"],
+                    filename=clip_filename,
+                    filepath=clip_path,
+                )
+                session.add(material)
+                session.flush()
+                batch_ids.append(material.id)
+
+            # 提交本批数据库事务
+            session.commit()
+            print(f"    第 {batch_start // batch_size + 1} 批: 已保存 {len(batch_ids)} 个素材")
+
+            # 向量化本批素材
+            items = [
+                (mid, batch[i]["text"], {
+                    "type": "video",
+                    "start_time": batch[i]["start"],
+                    "end_time": batch[i]["end"],
+                    "frame_width": meta["frame_width"],
+                    "frame_height": meta["frame_height"],
+                    "frame_rate": meta["frame_rate"],
+                    "filename": f"{video_stem}_clip_{batch_start + i:04d}.mp4",
+                    "filepath": str(OUTPUT_DIR / f"{video_stem}_clip_{batch_start + i:04d}.mp4"),
+                })
+                for i, mid in enumerate(batch_ids)
+            ]
+            store.add_materials_batch(items)
+            print(f"    第 {batch_start // batch_size + 1} 批: 已向量化 {len(items)} 个素材")
+            total_materials += len(batch_ids)
+
+        print(f"  → 共生成 {total_materials} 个素材片段")
     except Exception:
         session.rollback()
         raise
     finally:
         session.close()
-
-    print(f"[6/6] 正在向量化素材...")
-    store = VectorStore()
-    items = [
-        (mid, p["text"], {
-            "type": "video",
-            "start_time": p["start"],
-            "end_time": p["end"],
-            "frame_width": meta["frame_width"],
-            "frame_height": meta["frame_height"],
-            "frame_rate": meta["frame_rate"],
-            "filename": f"{video_stem}_clip_{i:04d}.mp4",
-            "filepath": str(OUTPUT_DIR / f"{video_stem}_clip_{i:04d}.mp4"),
-        })
-        for i, (mid, p) in enumerate(zip(material_ids, paragraphs))
-    ]
-    store.add_materials_batch(items)
-    print(f"  → 添加了 {len(items)} 个向量")
 
     # 清理临时音频文件
     try:
@@ -155,6 +168,9 @@ def process_video(video_path: str, language: str = "zh") -> dict:
 def search_and_generate(
     query: str,
     output_path: str | None = None,
+    frame_width: int | None = None,
+    frame_height: int | None = None,
+    frame_rate: float | None = None,
 ) -> dict:
     """运行混剪流水线：扩写 → 逐句检索 → 去重排序 → 拼接 → 配音。
 
@@ -189,7 +205,12 @@ def search_and_generate(
 
     for i, q in enumerate(queries):
         print(f"    查询 {i+1}/{len(queries)}: \"{q[:50]}...\"", end="")
-        results = search_materials(q, top_k=1)
+        results = search_materials(
+            q, top_k=1,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            frame_rate=frame_rate,
+        )
         if not results:
             print(" × 无匹配")
             continue
@@ -225,7 +246,7 @@ def search_and_generate(
         return {"error": "素材文件不存在。"}
 
     print(f"[4/5] 正在拼接混剪（{len(clip_paths)} 个片段）...")
-    concat_output = output_path or str(OUTPUT_DIR / "remix_concat.mp4")
+    concat_output = output_path or str(Path(OUTPUT_DIR).parent / "mixed" / "remix_concat.mp4")
     concat_videos(clip_paths, concat_output)
     print(f"  → {concat_output}")
 
@@ -233,12 +254,45 @@ def search_and_generate(
     from src.tts.cosyvoice import dub_from_text
 
     try:
-        final_output = output_path or str(OUTPUT_DIR / "remix_dubbed.mp4")
-        dub_from_text(concat_output, script, output_path=final_output)
+        final_output = output_path or str(Path(OUTPUT_DIR).parent / "mixed" / "remix_dubbed.mp4")
+        dub_from_text(concat_output, script, output_path=str(Path(final_output).parent))
         print(f"  → {final_output}")
     except RuntimeError as e:
         print(f"  → 配音跳过: {e}")
         final_output = concat_output
+
+    # 持久化混剪记录
+    session = get_session()
+    try:
+        gen_video = GeneratedVideo(
+            title=query,
+            script=script,
+            tts_voice="",
+            output_filepath=final_output,
+            status="completed",
+            material_count=len(matched_materials),
+            completed_at=datetime.utcnow(),
+        )
+        session.add(gen_video)
+        session.flush()
+
+        for idx, r in enumerate(matched_materials):
+            association = GeneratedVideoMaterial(
+                generated_video_id=gen_video.id,
+                material_id=r["material_id"],
+                sequence_order=idx,
+                segment_start_time=r["start_time"],
+                segment_end_time=r["end_time"],
+            )
+            session.add(association)
+
+        session.commit()
+        print(f"  → 已保存混剪记录 #{gen_video.id}")
+    except Exception:
+        session.rollback()
+        print("  → 混剪记录保存失败（不影响输出文件）")
+    finally:
+        session.close()
 
     print("✓ 混剪完成。")
     return {

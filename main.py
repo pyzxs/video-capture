@@ -1,130 +1,121 @@
-"""Video-Capture 命令行工具 — 字幕提取、搜索、字幕生成与配音。"""
+"""Video-Capture CLI — 视频处理、搜索、混剪生成与配音。"""
 
-import argparse
-import sys
 from pathlib import Path
 
-from src.core.database import init_db
-from src.pipeline import process_video, search_and_generate
-from src.query.search import search_materials
+import typer
+import uvicorn
+
+app = typer.Typer(help="视频字幕提取、语义搜索、混剪生成与 AI 配音工具")
 
 
-def cmd_process(args):
+@app.command()
+def process(
+    video: str = typer.Argument(..., help="视频文件路径"),
+    language: str = typer.Option("zh", "--language", "-l", help="ASR 语言代码"),
+):
     """处理视频：提取时间轴 → 生成段落 → 存储 → 向量化。"""
+    from src.pipeline import process_video as _process
+
     try:
-        result = process_video(args.video, language=args.language)
-        print(f"\n完成。素材数={result['material_count']}")
-    except FileNotFoundError as e:
-        print(f"错误：{e}", file=sys.stderr)
-        sys.exit(1)
+        result = _process(video, language=language)
+        typer.echo(f"\n完成。素材数={result['material_count']}")
     except Exception as e:
-        print(f"处理失败：{e}", file=sys.stderr)
-        sys.exit(1)
+        typer.echo(f"处理失败：{e}", err=True)
+        raise typer.Exit(1)
 
 
-def cmd_search(args):
-    """搜索已索引的内容并显示结果。"""
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="搜索文本"),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="返回结果数"),
+    width: int | None = typer.Option(None, "--width", help="筛选：视频宽度"),
+    height: int | None = typer.Option(None, "--height", help="筛选：视频高度"),
+    fps: float | None = typer.Option(None, "--fps", help="筛选：视频帧率"),
+):
+    """搜索已索引的素材内容。"""
+    from src.core.database import init_db
+    from src.query.search import search_materials
+
     init_db()
-    results = search_materials(args.query, top_k=args.top_k)
+    results = search_materials(query, top_k=top_k, frame_width=width, frame_height=height, frame_rate=fps)
 
     if not results:
-        print("未找到匹配内容。")
-        return
+        typer.echo("未找到匹配内容。")
+        raise typer.Exit()
 
-    print(f"\n找到 {len(results)} 条结果：\n")
+    typer.echo(f"\n找到 {len(results)} 条结果：\n")
     for i, r in enumerate(results, 1):
-        print(f"  [{i}] 段落 #{r['paragraph_id']}（视频：{r['video_filename']}）")
-        print(f"      时间：{r['start_time']:.1f} 秒 → {r['end_time']:.1f} 秒")
-        print(f"      文本：{r['content'][:120]}{'...' if len(r['content']) > 120 else ''}")
-        print()
+        typer.echo(f"  [{i}] 素材 #{r['material_id']}")
+        typer.echo(f"      时间：{r['start_time']:.1f}s → {r['end_time']:.1f}s")
+        typer.echo(f"      分辨率：{r['frame_width']}x{r['frame_height']} @ {r['frame_rate']}fps")
+        typer.echo(f"      文本：{r['content'][:120]}")
+        typer.echo()
 
 
-def cmd_generate(args):
-    """搜索、LLM 优化并生成带字幕的视频。"""
+@app.command()
+def generate(
+    query: str = typer.Argument(..., help="内容描述关键词"),
+    output: str | None = typer.Option(None, "--output", "-o", help="输出视频路径"),
+    style: str = typer.Option("自然流畅", "--style", help="LLM 扩写风格"),
+    width: int | None = typer.Option(None, "--width", help="筛选：视频宽度"),
+    height: int | None = typer.Option(None, "--height", help="筛选：视频高度"),
+    fps: float | None = typer.Option(None, "--fps", help="筛选：视频帧率"),
+):
+    """LLM 扩写 + 向量检索 + 混剪拼接 + TTS 配音。"""
+    from src.pipeline import search_and_generate
+
     try:
         result = search_and_generate(
-            query=args.query,
-            output_path=args.output,
+            query=query,
+            output_path=output,
+            frame_width=width,
+            frame_height=height,
+            frame_rate=fps,
         )
         if "error" in result:
-            print(f"错误：{result['error']}", file=sys.stderr)
-            if "srt_path" in result:
-                print(f"  （SRT 文件已生成：{result['srt_path']}）")
-            sys.exit(1)
-        print(f"\n输出视频：{result.get('output_video', 'N/A')}")
-        print(f"SRT 文件：{result.get('srt_path', 'N/A')}")
+            typer.echo(f"错误：{result['error']}", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"\n输出视频：{result.get('output_video', 'N/A')}")
     except Exception as e:
-        print(f"生成失败：{e}", file=sys.stderr)
-        sys.exit(1)
+        typer.echo(f"生成失败：{e}", err=True)
+        raise typer.Exit(1)
 
 
-def cmd_dub(args):
+@app.command()
+def dub(
+    video: str = typer.Argument(..., help="源视频路径"),
+    text: str = typer.Argument(None, help="配音文本"),
+    text_file: str | None = typer.Option(None, "--text-file", "-f", help="从文件读取配音文本"),
+    voice: str | None = typer.Option(None, "--voice", help="TTS 音色"),
+    output: str | None = typer.Option(None, "--output", "-o", help="输出视频路径"),
+):
     """文本合成语音并替换视频音轨。"""
     from src.tts.cosyvoice import dub_from_text
 
+    if text_file:
+        text = Path(text_file).read_text(encoding="utf-8").strip()
+    if not text:
+        typer.echo("错误：文本内容为空。", err=True)
+        raise typer.Exit(1)
+
     try:
-        if args.text_file:
-            text = Path(args.text_file).read_text(encoding="utf-8").strip()
-        else:
-            text = args.text
-
-        if not text:
-            print("错误：文本内容为空。", file=sys.stderr)
-            sys.exit(1)
-
-        result = dub_from_text(
-            video_path=args.video,
-            text=text,
-            voice=args.voice,
-            output_path=args.output,
-        )
-        print(f"\n配音视频：{result}")
+        result = dub_from_text(video_path=video, text=text, voice=voice, output_path=output)
+        typer.echo(f"\n配音视频：{result}")
     except Exception as e:
-        print(f"配音失败：{e}", file=sys.stderr)
-        sys.exit(1)
+        typer.echo(f"配音失败：{e}", err=True)
+        raise typer.Exit(1)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="视频字幕提取、语义搜索、字幕重生成与 AI 配音工具",
-    )
-    subparsers = parser.add_subparsers(dest="command", help="可用命令")
-
-    # process
-    p_process = subparsers.add_parser("process", help="处理视频的完整流水线")
-    p_process.add_argument("video", help="视频文件路径")
-    p_process.add_argument("-l", "--language", default="zh", help="ASR 语言代码（默认：zh）")
-    p_process.set_defaults(func=cmd_process)
-
-    # search
-    p_search = subparsers.add_parser("search", help="搜索已索引的内容")
-    p_search.add_argument("query", help="搜索文本")
-    p_search.add_argument("-k", "--top-k", type=int, default=5, help="返回结果数（默认：5）")
-    p_search.set_defaults(func=cmd_search)
-
-    # generate
-    p_gen = subparsers.add_parser("generate", help="搜索、优化并生成带字幕的视频")
-    p_gen.add_argument("query", help="内容搜索关键词")
-    p_gen.add_argument("--output", "-o", help="输出视频路径")
-    p_gen.add_argument("--style", default="自然流畅", help="LLM 优化风格（默认：自然流畅）")
-    p_gen.set_defaults(func=cmd_generate)
-
-    # dub
-    p_dub = subparsers.add_parser("dub", help="文本合成语音并替换视频音轨")
-    p_dub.add_argument("video", help="源视频路径")
-    p_dub.add_argument("text", nargs="?", help="配音文本")
-    p_dub.add_argument("-f", "--text-file", help="从文件读取配音文本")
-    p_dub.add_argument("--voice", help="TTS 音色（默认使用配置 TTS_VOICE）")
-    p_dub.add_argument("-o", "--output", help="输出视频路径")
-    p_dub.set_defaults(func=cmd_dub)
-
-    args = parser.parse_args()
-    if args.command is None:
-        parser.print_help()
-        sys.exit(1)
-
-    args.func(args)
+@app.command()
+def web(
+    host: str = typer.Option("127.0.0.1", "--host", help="监听地址"),
+    port: int = typer.Option(8000, "--port", "-p", help="监听端口"),
+    reload: bool = typer.Option(False, "--reload", help="热重载"),
+):
+    """启动 Web 服务（FastAPI + 前端）。"""
+    typer.echo(f"启动 Web 服务: http://{host}:{port}")
+    uvicorn.run("api.app:app", host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":
-    main()
+    app()
