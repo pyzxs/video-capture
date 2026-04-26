@@ -1,8 +1,9 @@
 """纯工具函数：时间格式转换、SRT/ASS 字幕解析。"""
-
+import mimetypes
 import re
+from datetime import datetime
 from pathlib import Path
-
+import imageio.v3 as iio
 
 _TIMESTAMP_RE = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d+)"
@@ -37,78 +38,37 @@ def format_time(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def parse_srt(path: str | Path) -> list[dict]:
-    """解析 SRT 字幕文件为片段列表。
-
-    每项包含：start, end, text。
-    """
-    segments = []
-    with open(path, encoding="utf-8-sig") as f:
-        content = f.read()
-
-    blocks = content.strip().split("\n\n")
-    for block in blocks:
-        lines = block.strip().splitlines()
-        if len(lines) < 3:
-            continue
-        time_line = lines[1] if "-->" in lines[1] else None
-        if not time_line:
-            continue
-        parts = time_line.split(" --> ")
-        if len(parts) != 2:
-            continue
-        start = ts_to_seconds(parts[0].strip())
-        end = ts_to_seconds(parts[1].strip())
-        text = "\n".join(lines[2:]).strip()
-        text = re.sub(r"<[^>]+>", "", text)  # 去除 HTML 标签
-        text = text.replace("\n", " ")
-        if text:
-            segments.append({"start": start, "end": end, "text": text})
-
-    return segments
+def date_storage_path(base_dir: str | Path, filename: str) -> Path:
+    """生成按年月日分目录的存储路径：<base_dir>/YYYY/MM/DD/<filename>"""
+    now = datetime.now()
+    return Path(base_dir) / f"{now.year:04d}" / f"{now.month:02d}" / f"{now.day:02d}" / filename
 
 
-def parse_ass(path: str | Path) -> list[dict]:
-    """解析 ASS 字幕文件为片段列表。
-
-    每项包含：start, end, text。
-    """
-    segments = []
-    with open(path, encoding="utf-8-sig") as f:
-        content = f.read()
-
-    in_events = False
-    format_line = None
-    for line in content.splitlines():
-        line = line.strip()
-        if line.startswith("[Events]"):
-            in_events = True
-            continue
-        if not in_events:
-            continue
-        if line.startswith("Format:"):
-            format_line = [c.strip() for c in line[7:].split(",")]
-            continue
-        if not line.startswith("Dialogue:"):
-            continue
-
-        parts = line.split(",", len(format_line) - 1) if format_line else None
-        if not parts or len(parts) < 4:
-            continue
-
-        start = ts_to_seconds(parts[1].strip())
-        end = ts_to_seconds(parts[2].strip())
-        text = parts[-1].strip()
-        text = re.sub(r"\{[^}]*}", "", text)  # 去除 ASS 样式标签
-        text = text.replace("\\N", " ").replace("\\n", " ")
-        if text:
-            segments.append({"start": start, "end": end, "text": text})
-
-    return segments
+def ensure_date_dir(base_dir: str | Path, filename: str) -> Path:
+    """生成日期分目录路径并确保目录存在。"""
+    path = date_storage_path(base_dir, filename)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
-def parse_subtitles(path: str | Path, fmt: str = ".srt") -> list[dict]:
-    """解析 SRT 或 ASS 文件为片段字典列表。"""
-    if fmt == ".ass":
-        return parse_ass(path)
-    return parse_srt(path)
+def get_filename_mime(filename: Path) -> str:
+    """获取文件mime信息"""
+    mime_type, _ = mimetypes.guess_type(str(filename))
+    if not mime_type:
+        ext = filename.suffix.lower()
+        mime_map = {
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav',
+            '.flac': 'audio/flac',
+            '.m4a': 'audio/mp4',
+            '.ogg': 'audio/ogg'
+        }
+        mime_type = mime_map.get(ext, 'application/octet-stream')
+    return mime_type
+
+
+def get_image_size_imageio(image_path):
+    """获取图片宽高"""
+    img = iio.imread(image_path)
+    height, width = img.shape[:2]
+    return width, height

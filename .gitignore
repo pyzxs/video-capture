@@ -11,3 +11,13 @@ wheels/
 .output
 .env
 uv.lock
+.claude
+# Logs
+logs/
+videos
+resource
+gui/node_modules
+_patch.py
+database
+model
+bin/*

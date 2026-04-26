@@ -1,56 +1,91 @@
-import os
+"""所有后端配置从 config.json 读取，修改配置即时生效。"""
+
+import json
 from pathlib import Path
-from dotenv import load_dotenv
+import os
 
-load_dotenv()
+_CONFIG_PATH = Path("config.json")
 
-# 所有下载模型的根目录
-MODEL_DIR = Path(os.getenv("MODEL_DIR", "model"))
+# ── 默认值 ──
+_DEFAULTS = {
+    "llm_api_key": "",
+    "llm_base_url": "",
+    "llm_model": "deepseek-chat",
+    "llm_provider": "openai",
+    "asr_model_size": "base",
+    "asr_api_base_url": "https://api.siliconflow.cn/v1/audio/transcriptions",
+    "asr_api_key": "",
+    "asr_api_model": "FunAudioLLM/SenseVoiceSmall",
+    "whisper_model_dir": "model/whisper",
+    "vector_db_path": "database/chroma_db",
+    "embedding_model": "BAAI/bge-m3",
+    "embedding_device": "cpu",
+    "embedding_api_key": "",
+    "embedding_api_base_url": "https://api.siliconflow.cn/v1/embeddings",
+    "tts_api_key": "",
+    "tts_api_base_url": "https://api.siliconflow.cn/v1/audio/speech",
+    "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
+    "tts_voice": "FunAudioLLM/CosyVoice2-0.5B:anna",
+    "source_dir": "videos/source",
+    "material_dir": "videos/material",
+    "mixed_dir": "videos/mixed",
+    "paragraph_gap_threshold": 2.0,
+    "subtitle_crop_bottom": 0,
+    "log_level": "INFO",
+    "log_dir": "logs",
+}
 
-# 数据库
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///database/material.db")
+# ── JSON key → Python type ──
+_TYPE_MAP = {
+    "source_dir": Path,
+    "material_dir": Path,
+    "mixed_dir": Path,
+    "whisper_model_dir": Path,
+    "paragraph_gap_threshold": float,
+    "subtitle_crop_bottom": int,
+    "log_dir": str,
+}
 
-# 向量存储
-VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", "database/chroma_db")
+# 数据库连接（硬编码，需要在 DB 初始化前使用）
+DATABASE_URL = "sqlite:///resource/database/material.db"
 
-# 嵌入模型（硅基流动 API）
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
-SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
-SILICONFLOW_EMBEDDING_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1") + "/embeddings"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# 嵌入模式: "api" 使用硅基流动, "local" 使用本地模型
-EMBEDDING_MODE = os.getenv("EMBEDDING_MODE", "api")
-# 本地嵌入模型的运行设备（cpu / cuda / cuda:0 等）
-EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
 
-# ASR 模型（Whisper）：tiny, base, small, medium, large
-ASR_MODEL_SIZE = os.getenv("ASR_MODEL", "base")
-WHISPER_MODEL_DIR = Path(os.getenv("WHISPER_MODEL_DIR", str(MODEL_DIR / "whisper")))
+def _load() -> dict:
+    if _CONFIG_PATH.exists():
+        data = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+        merged = dict(_DEFAULTS)
+        merged.update(data)
+        return merged
+    return dict(_DEFAULTS)
 
-# 处理后的视频输出目录
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "videos/material")).resolve()
 
-# 上传的原始视频存储目录
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "videos/uploaded")).resolve()
+def get_config(key: str):
+    """获取配置值（每次调用从 config.json 重新读取）。"""
+    val = _load().get(key, _DEFAULTS.get(key))
+    typ = _TYPE_MAP.get(key)
+    if typ is Path:
+        return Path(str(val)).resolve()
+    if typ is float:
+        return float(val)
+    if typ is int:
+        return int(val)
+    return val
 
-# LLM API 密钥（兼容 Anthropic 格式，如 DeepSeek）
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-# LLM 模型名称
-LLM_MODEL = os.getenv("LLM_MODEL", "DeepSeek-V3.2")
+def reload_config():
+    """重新加载 config.json（写入端调用）。"""
+    pass  # get_config 每次重新读取，无需额外操作
 
-# LLM 自定义 API 地址（如 DeepSeek 的 Anthropic 兼容接口）
-ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "")
 
-# 段落合并阈值（秒）
-PARAGRAPH_GAP_THRESHOLD = float(os.getenv("PARAGRAPH_GAP_THRESHOLD", "2.0"))
-
-# 字幕区域裁剪（像素），从视频底部裁掉指定高度以去除硬字幕，0 表示不裁剪
-SUBTITLE_CROP_BOTTOM = int(os.getenv("SUBTITLE_CROP_BOTTOM", "0"))
-
-# CosyVoice TTS 模型路径（本地模型，使用 API 时不需要）
-COSYVOICE_MODEL_DIR = os.getenv("COSYVOICE_MODEL_DIR", str(MODEL_DIR / "CosyVoice-300M"))
-
-# TTS 语音合成（硅基流动 API）
-TTS_MODEL = os.getenv("TTS_MODEL", "FunAudioLLM/CosyVoice2-0.5B")
-TTS_VOICE = os.getenv("TTS_VOICE", "FunAudioLLM/CosyVoice2-0.5B:anna")
+def save_config(data: dict):
+    """将配置字典写入 config.json（仅写入非空值，保留文件中已有的值）。"""
+    current = _load()
+    for k, v in data.items():
+        if v:
+            current[k] = v
+    _CONFIG_PATH.write_text(
+        json.dumps(current, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )

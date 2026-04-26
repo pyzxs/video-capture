@@ -1,76 +1,202 @@
 <template>
+  <header class="app-header">
+    <div class="header-logo">
+      <div class="logo-circle">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </div>
+      <span class="header-title">AI Video Capture</span>
+    </div>
+    <div class="header-controls">
+      <button class="header-btn" @click="minimizeWindow" title="最小化">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button class="header-btn" @click="maximizeWindow" title="最大化">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>
+      </button>
+      <button class="header-btn header-btn-close" @click="closeWindow" title="关闭">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+      </button>
+    </div>
+  </header>
   <div class="app-container">
     <aside class="sidebar">
-      <div class="logo">
-        <svg class="logo-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="23 7 16 12 23 17 23 7" />
-          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-        </svg>
-        <span>Video Capture</span>
-      </div>
       <nav>
-        <router-link to="/videos" class="nav-item" active-class="active">
+        <router-link to="/videos" class="nav-item" active-class="active" title="原始视频管理">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
           </svg>
           <span>原始视频管理</span>
         </router-link>
-        <router-link to="/materials" class="nav-item" active-class="active">
+        <router-link to="/materials" class="nav-item" active-class="active" title="素材管理">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="22 3 22 15 16 15 16 21 2 21 2 3 22 3" /><line x1="6" y1="7" x2="18" y2="7" /><line x1="6" y1="11" x2="18" y2="11" /><line x1="6" y1="15" x2="10" y2="15" />
           </svg>
           <span>素材管理</span>
         </router-link>
-        <router-link to="/mashups" class="nav-item" active-class="active">
+        <router-link to="/mashups" class="nav-item" active-class="active" title="混剪视频管理">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 8a5 5 0 0 1 0 8" /><path d="M18.3 4.7a9 9 0 0 1 0 14.6" /><rect x="2" y="6" width="10" height="12" rx="1" />
           </svg>
           <span>混剪视频管理</span>
         </router-link>
+        <router-link to="/notes" class="nav-item" active-class="active" title="笔记管理">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span>笔记管理</span>
+        </router-link>
+        <router-link to="/agents" class="nav-item" active-class="active" title="智能体管理">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M16 14H8a4 4 0 0 0-4 4v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2a4 4 0 0 0-4-4z"/><path d="M20 10l-2 2 2 2"/><path d="M4 10l2 2-2 2"/>
+          </svg>
+          <span>智能体管理</span>
+        </router-link>
       </nav>
-      <div class="sidebar-footer">
-        <span class="status-dot" :class="apiStatus"></span>
-        <span class="status-text">{{ apiStatus === 'online' ? 'API 已连接' : 'API 断开' }}</span>
+      <div class="sidebar-bottom">
+        <router-link to="/settings" class="nav-item" active-class="active" title="系统配置">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span>系统配置</span>
+        </router-link>
       </div>
     </aside>
+
+    <!-- 二级菜单 - 文件夹 -->
+    <aside v-if="showSubSidebar" class="sub-sidebar">
+      <div class="sub-sidebar-header">
+        <span>文件夹</span>
+        <button class="btn btn-sm btn-default" @click="handleCreateFolder" title="新建文件夹">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>
+      <div class="sub-sidebar-tree">
+        <div class="sub-sidebar-item" :class="{ active: selectedFolderId === null }" @click="selectedFolderId = null">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>全部</span>
+        </div>
+        <div v-for="f in folders" :key="f.id" class="sub-sidebar-item"
+             :class="{ active: selectedFolderId === f.id }"
+             @click="selectedFolderId = f.id">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span class="sub-sidebar-name">{{ f.name }}</span>
+          <span class="sub-sidebar-count">{{ folderCount(f) }}</span>
+          <div class="sub-sidebar-actions">
+            <button class="btn-icon" @click.stop="handleRenameFolder(f)" title="重命名">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            </button>
+            <button class="btn-icon btn-icon-danger" @click.stop="handleDeleteFolder(f)" title="删除">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
     <main class="main-content">
       <router-view />
     </main>
     <ToastMessage />
+    <ConfirmDialog />
+    <PromptDialog />
   </div>
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
-import api from './api/index.js'
+import { computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import ToastMessage from './components/ToastMessage.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
+import PromptDialog from './components/PromptDialog.vue'
+import { useFolders } from './composables/useFolders.js'
+import { useToast } from './composables/useToast.js'
+import { folderApi } from './api/index.js'
 
 export default {
   name: 'App',
-  components: { ToastMessage },
+  components: { ToastMessage, ConfirmDialog, PromptDialog },
   setup() {
-    const apiStatus = ref('checking')
-    let timer
+    const route = useRoute()
+    const toast = useToast()
+    const { folders, selectedFolderId, loadFolders } = useFolders()
 
-    const checkHealth = async () => {
+    const folderRoutes = ['Videos', 'Materials', 'Mashups']
+    const showSubSidebar = computed(() => folderRoutes.includes(route.name))
+
+    const folderTypeMap = {
+      Videos: 'video',
+      Materials: 'material',
+      Mashups: 'generated',
+    }
+
+    watch(() => route.name, (name) => {
+      if (folderRoutes.includes(name)) {
+        selectedFolderId.value = null
+        loadFolders(folderTypeMap[name])
+      }
+    })
+
+    const handleCreateFolder = async () => {
+      const name = await toast.prompt('请输入文件夹名称', '新建文件夹', '')
+      if (!name) return
       try {
-        await api.get('/health')
-        apiStatus.value = 'online'
-      } catch {
-        apiStatus.value = 'offline'
+        await folderApi.create(name, folderTypeMap[route.name])
+        await loadFolders(folderTypeMap[route.name])
+        toast.success('文件夹已创建')
+      } catch (e) {
+        toast.error('创建失败')
       }
     }
 
-    onMounted(() => {
-      checkHealth()
-      timer = setInterval(checkHealth, 5000)
-    })
+    const handleRenameFolder = async (f) => {
+      const name = await toast.prompt('请输入新名称', '重命名文件夹', f.name)
+      if (!name || name === f.name) return
+      try {
+        await folderApi.update(f.id, name)
+        await loadFolders(folderTypeMap[route.name])
+        toast.success('已重命名')
+      } catch (e) {
+        toast.error('重命名失败')
+      }
+    }
 
-    onUnmounted(() => {
-      clearInterval(timer)
-    })
+    const handleDeleteFolder = async (f) => {
+      if (!await toast.confirm(`确定删除文件夹「${f.name}」？文件夹内的内容将变为未分类。`)) return
+      try {
+        await folderApi.remove(f.id)
+        if (selectedFolderId.value === f.id) {
+          selectedFolderId.value = null
+        }
+        await loadFolders(folderTypeMap[route.name])
+        toast.success('文件夹已删除')
+      } catch (e) {
+        toast.error('删除失败')
+      }
+    }
 
-    return { apiStatus }
+    const folderCount = (f) => {
+      const key = folderTypeMap[route.name]
+      if (key === 'video') return f.video_count ?? ''
+      if (key === 'material') return f.material_count ?? ''
+      if (key === 'generated') return f.generated_count ?? ''
+      return ''
+    }
+
+    return {
+      showSubSidebar,
+      folders,
+      selectedFolderId,
+      folderCount,
+      handleCreateFolder,
+      handleRenameFolder,
+      handleDeleteFolder,
+      minimizeWindow: () => window.electronAPI?.minimize(),
+      maximizeWindow: () => window.electronAPI?.maximize(),
+      closeWindow: () => window.electronAPI?.close(),
+    }
   },
 }
 </script>
@@ -79,7 +205,6 @@ export default {
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --sidebar-w: 236px;
   --accent: #6c5ce7;
   --accent-light: #a29bfe;
   --accent-bg: rgba(108,92,231,0.08);
@@ -101,61 +226,97 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app-container { display: flex; height: 100vh; }
+/* ── App Header ── */
+.app-header {
+  height: 40px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  -webkit-app-region: drag;
+  user-select: none;
+  flex-shrink: 0;
+}
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-logo .logo-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+.header-btn {
+  width: 36px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.12s;
+}
+.header-btn:hover { background: #f3f4f6; color: var(--text); }
+.header-btn-close:hover { background: #ef4444; color: #fff; }
+
+.app-container { display: flex; height: calc(100vh - 40px); }
 
 /* ── Sidebar ── */
 .sidebar {
-  width: var(--sidebar-w);
-  background: linear-gradient(180deg, #1a1b2f 0%, #12132a 100%);
-  color: #c8c9dc;
+  width: 62px;
+  background: #fff;
+  color: var(--text);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   user-select: none;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
 }
-.logo {
-  padding: 22px 20px 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #e8e9f0;
-  letter-spacing: 0.3px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.logo-icon { color: var(--accent-light); flex-shrink: 0; }
 
-nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+nav { flex: 1; padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.sidebar-bottom { padding: 8px 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; }
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 10px 14px;
-  color: #8e8fa8;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--text-secondary);
   text-decoration: none;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: 10px;
   transition: all 0.15s ease;
 }
-.nav-item:hover { background: rgba(255,255,255,0.06); color: #d0d1e2; }
-.nav-item.active {
-  background: var(--accent-bg);
-  color: var(--accent-light);
-}
+.nav-item:hover { background: #f0f2f5; color: var(--text); }
+.nav-item.active { background: #dcfce7; color: #16a34a; border-radius: 50%; }
+.nav-item.router-link-exact-active { background: #dcfce7; color: #16a34a; border-radius: 50%; }
 .nav-item svg { flex-shrink: 0; opacity: 0.7; }
 .nav-item.active svg { opacity: 1; }
-
-.sidebar-footer {
-  padding: 14px 20px;
-  font-size: 12px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #6b6c84;
-}
+.nav-item.router-link-exact-active svg { opacity: 1; }
+.nav-item span { display: none; }
 .status-dot {
   width: 7px; height: 7px;
   border-radius: 50%;
@@ -166,26 +327,129 @@ nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2
 .status-dot.checking { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.4); }
 .status-text { line-height: 1; }
 
+/* ── Sub Sidebar ── */
+.sub-sidebar {
+  width: 135px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+.sub-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.sub-sidebar-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 4px;
+}
+.sub-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: background 0.15s;
+  position: relative;
+}
+.sub-sidebar-item:hover { background: #f3f4f6; }
+.sub-sidebar-item.active {
+  background: #eef2ff;
+  color: var(--accent);
+  font-weight: 500;
+}
+.sub-sidebar-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub-sidebar-name:not(:last-child) {
+  margin-right: 2px;
+}
+.sub-sidebar-count {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: #f3f4f6;
+  padding: 0 4px;
+  border-radius: 6px;
+  line-height: 16px;
+  flex-shrink: 0;
+}
+.sub-sidebar-actions {
+  display: none;
+  gap: 1px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.sub-sidebar-item:hover .sub-sidebar-actions {
+  display: flex;
+}
+.sub-sidebar-item:hover .sub-sidebar-count {
+  display: none;
+}
+.sub-sidebar .btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 1px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  width: 18px;
+  height: 18px;
+}
+.sub-sidebar .btn-icon:hover { background: #e5e7eb; color: var(--text); }
+.sub-sidebar .btn-icon-danger:hover { background: #fee2e2; color: #dc2626; }
+.sub-sidebar .btn-sm { padding: 4px 6px; font-size: 12px; border-radius: 5px; }
+
 /* ── Main Content ── */
-.main-content { flex: 1; overflow-y: auto; background: var(--bg); padding: 28px 32px; }
+.main-content { flex: 1; overflow-y: auto; background: var(--bg); padding: 1px 3px; }
 
 /* ── Scrollbar ── */
-.main-content::-webkit-scrollbar { width: 6px; }
-.main-content::-webkit-scrollbar-track { background: transparent; }
-.main-content::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-.main-content::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+.main-content::-webkit-scrollbar,
+.sub-sidebar-tree::-webkit-scrollbar { width: 4px; }
+.main-content::-webkit-scrollbar-track,
+.sub-sidebar-tree::-webkit-scrollbar-track { background: transparent; }
+.main-content::-webkit-scrollbar-thumb,
+.sub-sidebar-tree::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+.main-content::-webkit-scrollbar-thumb:hover,
+.sub-sidebar-tree::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
 /* ── Global Shared Styles ── */
-.view-container { width: 100%; max-width: 1400px; margin: 0 auto; }
+.view-container { width: 100%; }
+.panel {
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+  padding: 16px 20px;
+  margin-bottom: 10px;
+}
+
 .view-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
 }
 .view-header h2 {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 400;
   color: var(--text);
   letter-spacing: -0.3px;
 }
@@ -272,6 +536,20 @@ nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2
 .btn:active:not(:disabled) { transform: translateY(0); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 5px; }
+
+/* Icon-only buttons: 透明背景，黑色图标，hover 时显示浅色底 */
+.btn:has(svg:only-child) {
+  background: transparent !important;
+  border: none;
+  padding: 6px;
+  box-shadow: none;
+  color: #1a1a2e !important;
+}
+.btn:has(svg:only-child):hover:not(:disabled) {
+  background: rgba(0,0,0,0.06) !important;
+  box-shadow: none;
+  transform: none;
+}
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: #5a4bd1; }
 .btn-success { background: #10b981; color: #fff; }
@@ -342,8 +620,23 @@ nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2
 }
 @keyframes modal-in { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 .modal-wide { width: 780px; }
-.modal h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+.modal h3 { font-size: 17px; font-weight: 700; color: var(--text); }
 .modal-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; }
+
+/* Modal header: title left, actions right */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.modal-header h3 { margin: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50ch; }
+.modal-header .modal-actions {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 
 /* Form */
@@ -407,12 +700,11 @@ nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2
 .progress-bar { flex: 1; height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
 .progress-fill {
   height: 100%;
-  width: 100%;
+  width: 0%;
   background: linear-gradient(90deg, var(--accent), var(--accent-light));
   border-radius: 3px;
-  animation: progress 1.6s ease-in-out infinite;
+  transition: width 0.3s ease;
 }
-@keyframes progress { 0% { width: 8%; } 50% { width: 55%; } 100% { width: 8%; } }
 
 /* Upload zone */
 .upload-zone {
@@ -429,7 +721,7 @@ nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2
 .upload-icon { font-size: 36px; line-height: 1; }
 .upload-hint { font-size: 12px; color: #9ca3af; }
 .upload-preview { display: flex; align-items: center; gap: 12px; justify-content: center; }
-.file-name { font-weight: 600; color: var(--text); }
+.file-name { font-weight: 600; color: var(--text); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-size { color: var(--text-secondary); font-size: 13px; }
 
 /* Pagination */
@@ -470,9 +762,7 @@ nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2
 .page-info { margin-left: 14px; font-size: 13px; color: var(--text-secondary); }
 
 /* Preview */
-.preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.preview-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
-.preview-body { background: #000; border-radius: 10px; overflow: hidden; }
+.preview-body { border-radius: 10px; overflow: hidden; }
 .video-player { width: 100%; max-height: 70vh; display: block; }
 
 /* Material section (MashupManager) */
@@ -533,9 +823,75 @@ nav { flex: 1; padding: 14px 10px; display: flex; flex-direction: column; gap: 2
 table.data-table { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); }
 .data-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+/* ── Move-to-Folder Dialog ── */
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0 -4px;
+}
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  transition: all 0.12s ease;
+  user-select: none;
+}
+.folder-item:hover {
+  background: #f0f4ff;
+  color: var(--accent);
+}
+.folder-item:active {
+  background: #e8ecf8;
+  transform: scale(0.98);
+}
+.folder-item .folder-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: #f59e0b;
+  opacity: 0.7;
+}
+.folder-item:hover .folder-icon {
+  opacity: 1;
+}
+.folder-item .folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.folder-item .folder-arrow {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: all 0.12s;
+}
+.folder-item:hover .folder-arrow {
+  opacity: 0.6;
+  transform: translateX(3px);
+}
+.folder-item.uncategorized .folder-icon {
+  color: var(--text-secondary);
+}
+.folder-list::-webkit-scrollbar { width: 4px; }
+.folder-list::-webkit-scrollbar-track { background: transparent; }
+.folder-list::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+.folder-list::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
 /* ── Responsive ── */
 @media (max-width: 1024px) {
-  .main-content { padding: 20px 16px; }
+  .main-content { padding: 1px 3px; }
   .view-header { flex-direction: column; align-items: stretch; gap: 12px; }
   .header-actions { justify-content: space-between; }
   .search-input { width: 100%; }
@@ -544,13 +900,6 @@ table.data-table { background: var(--card-bg); border-radius: var(--radius); box
 }
 
 @media (max-width: 768px) {
-  :root { --sidebar-w: 56px; }
-  .logo span { display: none; }
-  .logo { justify-content: center; padding: 18px 0; }
-  .nav-item { justify-content: center; padding: 10px 0; }
-  .nav-item span { display: none; }
-  .sidebar-footer .status-text { display: none; }
-  .sidebar-footer { justify-content: center; }
   .view-container { max-width: 100%; }
   .data-table { font-size: 13px; }
   .data-table th, .data-table td { padding: 8px 10px; }
@@ -560,7 +909,6 @@ table.data-table { background: var(--card-bg); border-radius: var(--radius); box
   .header-actions { flex-wrap: wrap; }
   .header-actions .btn { flex: 1; justify-content: center; }
   .mat-picker-item { flex-wrap: wrap; }
-  .preview-header { flex-direction: column; gap: 8px; }
   .upload-options { flex-direction: column; }
 }
 
