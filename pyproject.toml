@@ -22,6 +22,8 @@ dependencies = [
     "lxml>=6.1.0",
     "yt-dlp>=2026.3.17",
     "imageio>=2.37.3",
+    "moviepy>=2.2.1",
+    "litellm>=1.83.0",
 ]
 
 [project.optional-dependencies]
