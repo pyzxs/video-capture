@@ -609,6 +609,7 @@
 /* ── Split Steps ── */
 .split-steps {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   margin-bottom: 20px;
   border: 1px solid var(--border);
@@ -616,19 +617,23 @@
   overflow: hidden;
 }
 .split-step {
-  flex: 1;
+  flex: 1 1 25%;
+  min-width: 160px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
-  padding: 10px 8px;
-  font-size: 13px;
+  padding: 9px 10px;
+  font-size: 12px;
   background: #fafafa;
   color: var(--text-secondary);
   border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   transition: all 0.2s;
 }
+.split-step:nth-child(4n) { border-right: none; }
 .split-step:last-child { border-right: none; }
+.split-step:nth-child(n+5) { border-bottom: none; }
 .split-step.done {
   background: #f0fdf4;
   color: #16a34a;
@@ -664,9 +669,75 @@
 .split-step.done .step-num { display: none; }
 .split-step.doing .step-num { display: none; }
 .split-step.error .step-num { display: none; }
+.split-step-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
 .split-step-label {
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.1;
+}
+.split-step-desc {
+  font-size: 9px;
+  color: inherit;
+  opacity: 0.65;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+.split-step.done .split-step-desc,
+.split-step.doing .split-step-desc,
+.split-step.error .split-step-desc { opacity: 0.8; }
+
+/* 智能分割说明卡片 */
+.smart-desc {
+  background: linear-gradient(135deg, #f8f7ff 0%, #f0f4ff 100%);
+  border: 1px solid #e0e0f0;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.smart-desc-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4c1d95;
+  margin-bottom: 8px;
+}
+.smart-desc-intro {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.smart-desc-steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: #555;
+  line-height: 1.7;
+}
+.smart-desc-steps li {
+  margin-bottom: 2px;
+}
+.smart-desc-steps li strong {
+  color: #333;
+}
+.split-current-desc {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 8px;
+  text-align: center;
 }
 @keyframes spin {
   from { transform: rotate(0deg); }

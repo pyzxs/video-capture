@@ -2,7 +2,9 @@ import os
 import subprocess
 from pathlib import Path
 
-from src.config import OUTPUT_DIR
+from src.config import OUTPUT_DIR, BASE_DIR
+
+_ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
 
 
 def composite_subtitles(video_path: str, srt_path: str, output_path: str | None = None) -> str:
@@ -16,7 +18,7 @@ def composite_subtitles(video_path: str, srt_path: str, output_path: str | None 
     srt_filter_path = str(Path(srt_path).as_posix())
 
     cmd = [
-        "ffmpeg", "-i", str(video_path),
+        _ffmpeg_bin, "-i", str(video_path),
         "-vf", f"subtitles={srt_filter_path}:force_style='FontName=Noto Sans SC,FontSize=18,Alignment=2'",
         "-c:a", "copy",
         "-y", str(output_path),
@@ -61,7 +63,7 @@ def concat_videos(clip_paths: list[str], output_path: str) -> str:
                 f.write(f"file '{Path(p).resolve().as_posix()}'\n")
 
         cmd = [
-            "ffmpeg", "-f", "concat", "-safe", "0",
+            _ffmpeg_bin, "-f", "concat", "-safe", "0",
             "-i", str(list_path),
             "-c", "copy",
             "-y", str(output),

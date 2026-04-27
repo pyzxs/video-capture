@@ -126,7 +126,7 @@ export default {
     const loadMaterials = async () => {
       loading.value = true
       try {
-        const params = { q: searchQuery.value || undefined, type: typeFilter.value || undefined, skip: (page.value - 1) * pageSize, limit: pageSize }
+        const params = { q: searchQuery.value || undefined, type: typeFilter.value || undefined, status: 1, skip: (page.value - 1) * pageSize, limit: pageSize }
         const res = await materialApi.list(params)
         const data = res.data
         materials.value = data.items || data || []

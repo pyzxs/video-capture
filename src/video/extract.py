@@ -5,16 +5,19 @@ import re
 import subprocess
 from pathlib import Path
 
-from src.config import OUTPUT_DIR
+from src.config import OUTPUT_DIR, BASE_DIR
 from src.processing.asr import transcribe
 from src.processing.video import extract_audio
 from src.utils import parse_subtitles
+
+_ffprobe_bin = str(Path(BASE_DIR) / "bin" / "ffprobe")
+_ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
 
 
 def _ffmpeg_stream_info(video_path: str) -> list[dict]:
     """通过 ffprobe 返回所有字幕流信息。"""
     cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
+        _ffprobe_bin, "-v", "quiet", "-print_format", "json",
         "-show_streams", "-select_streams", "s",
         str(video_path),
     ]
@@ -59,7 +62,7 @@ def extract_soft_subtitles(video_path: str) -> list[dict] | None:
     sub_path = str(OUTPUT_DIR / f"{stem}_subs{ext}")
 
     cmd = [
-        "ffmpeg", "-i", str(video_path),
+        _ffmpeg_bin, "-i", str(video_path),
         "-map", f"0:{idx}",
         "-y", sub_path,
     ]

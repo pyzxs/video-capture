@@ -97,7 +97,7 @@ def split_video_clip(
     ]
     if no_audio:
         cmd += ["-c:v", "libx264", "-crf", "18", "-an", "-y", str(output_path)]
-    else:
+    elif vocals_path and Path(vocals_path).exists():
         cmd += [
             "-ss", str(start), "-to", str(end),
             "-i", str(vocals_path),
@@ -110,6 +110,19 @@ def split_video_clip(
             "-c:v", "libx264", "-crf", "18",
             "-c:a", "aac", "-b:a", "192k",
             "-shortest",
+            "-y", str(output_path),
+        ]
+    else:
+        # no separate vocals file — use original video's audio track
+        cmd += [
+            "-map", "0:v:0",
+            "-map", "0:a:0",
+        ]
+        if crop:
+            cmd += ["-vf", f"crop={crop}"]
+        cmd += [
+            "-c:v", "libx264", "-crf", "18",
+            "-c:a", "aac", "-b:a", "192k",
             "-y", str(output_path),
         ]
     subprocess.run(cmd, check=True, capture_output=True)

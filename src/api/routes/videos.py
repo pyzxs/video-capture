@@ -10,6 +10,9 @@ from src.api.deps import get_db
 from src.api.response import fail_response, response_success
 from src.api.schemas import (
     ParagraphItem,
+    SmartAnalyzeRequest,
+    SmartExtractAudioOut,
+    SmartSubtitlesOut,
     SplitAnalyzeOut,
     SplitCutOut,
     SplitCutRequest,
@@ -291,6 +294,102 @@ def split_analyze(video_id: int, language: str = "zh", db: Session = Depends(get
     ).model_dump(mode="json"), message="分析完成")
 
 
+@router.post("/{video_id}/split/smart/subtitles", description="智能分割 - 步骤1: 分析视频软字幕")
+def smart_split_subtitles(video_id: int, db: Session = Depends(get_db)):
+    """尝试从视频中提取嵌入式软字幕流（SRT/ASS）。"""
+    v = db.query(Video).get(video_id)
+    if not v:
+        raise fail_response(status_code=404, message="视频不存在")
+    if not Path(v.filepath).exists():
+        raise fail_response(status_code=404, message="视频文件不存在")
+
+    from src.processing.subtitle import extract_soft_subtitles
+
+    try:
+        subtitles = extract_soft_subtitles(v.filepath)
+    except Exception as e:
+        logger.warning("  → 软字幕提取失败: %s", e)
+        subtitles = None
+    count = len(subtitles) if subtitles else 0
+    msg = f"提取到 {count} 个字幕片段" if count > 0 else "未找到软字幕"
+    return response_success(
+        data=SmartSubtitlesOut(subtitles=subtitles, segment_count=count).model_dump(mode="json"),
+        message=msg,
+    )
+
+
+@router.post("/{video_id}/split/smart/extract-audio", description="智能分割 - 步骤2: 提取视频音频")
+def smart_split_extract_audio(video_id: int, db: Session = Depends(get_db)):
+    """使用 ffmpeg 将视频音轨提取为 16kHz 单声道 WAV。"""
+    v = db.query(Video).get(video_id)
+    if not v:
+        raise fail_response(status_code=404, message="视频不存在")
+    if not Path(v.filepath).exists():
+        raise fail_response(status_code=404, message="视频文件不存在")
+
+    from src.processing.ffmpeg import extract_audio
+
+    try:
+        audio_path = extract_audio(v.filepath)
+    except Exception as e:
+        raise fail_response(status_code=500, message=f"音频提取失败: {e}")
+
+    return response_success(
+        data=SmartExtractAudioOut(audio_path=audio_path).model_dump(mode="json"),
+        message="音频提取完成",
+    )
+
+
+@router.post("/{video_id}/split/smart/analyze", description="智能分割 - 步骤3+4: 语音识别与语义段落分析")
+def smart_split_analyze(video_id: int, data: SmartAnalyzeRequest, db: Session = Depends(get_db)):
+    """ASR 转写音频，结合软字幕合并为自然段落。"""
+    v = db.query(Video).get(video_id)
+    if not v:
+        raise fail_response(status_code=404, message="视频不存在")
+
+    import os
+    from src.processing.asr import transcribe
+    from src.processing.paragraph import merge_into_paragraphs
+    from src.config import BASE_DIR
+
+    # Whisper internally calls ffmpeg without our prefix; add bin/ to PATH
+    bin_dir = str(BASE_DIR + "/bin")
+    prev_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = bin_dir + os.pathsep + prev_path
+    try:
+        # Step 3: Transcribe audio via Whisper
+        logger.info("  → 开始 ASR 语音识别...")
+        asr_segments = transcribe(data.audio_path, language=data.language)
+    except Exception as e:
+        raise fail_response(status_code=500, message=f"语音识别失败: {e}")
+    finally:
+        os.environ["PATH"] = prev_path
+
+    if not asr_segments:
+        raise fail_response(status_code=400, message="ASR 转录未产生任何片段")
+
+    logger.info("  → ASR 完成，共 %d 个片段", len(asr_segments))
+
+    # Step 4: Combine and merge into paragraphs
+    if data.subtitles and len(data.subtitles) > 0:
+        source_segments = data.subtitles
+        logger.info("  → 使用软字幕进行段落合并（%d 个片段）", len(source_segments))
+    else:
+        source_segments = asr_segments
+        logger.info("  → 回退到 ASR 片段进行段落合并（%d 个片段）", len(source_segments))
+
+    paragraphs = merge_into_paragraphs(source_segments)
+
+    items = [
+        ParagraphItem(seq_index=p["seq_index"], start=p["start"], end=p["end"], text=p["text"])
+        for p in paragraphs
+    ]
+    return response_success(
+        data=SplitAnalyzeOut(paragraphs=items, total_duration=v.duration).model_dump(mode="json"),
+        message=f"分析完成，共 {len(items)} 个自然段落",
+    )
+
+
 @router.post("/{video_id}/split/cut", description="分割视频 - 步骤2: 切割片段（仅保留画面，去除声音）")
 def split_cut(video_id: int, data: SplitCutRequest, db: Session = Depends(get_db)):
     """根据段落数据切割视频片段，生成无音频的纯视频素材。"""
@@ -313,8 +412,7 @@ def split_cut(video_id: int, data: SplitCutRequest, db: Session = Depends(get_db
     materials = []
     material_ids = []
     for p in data.paragraphs:
-        seg_path = ensure_date_dir(get_config("material_dir"),
-                                   f"seg_{video_id}_{p.seq_index}.mp4")
+        seg_path = ensure_date_dir(get_config("material_dir"),f"seg_{video_id}_{p.seq_index}.mp4")
         seg_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             split_video_clip(

@@ -5,9 +5,11 @@ from pathlib import Path
 
 import requests
 
-from src.config import get_config
+from src.config import get_config, BASE_DIR
 from src.utils import ensure_date_dir
 from src.logger import default_logger as logger
+
+ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
 
 
 def synthesize(text: str, output_path: str | None = None,
@@ -73,7 +75,7 @@ def dub_video(video_path: str, audio_path: str, output_path: str | None = None) 
     # 使用临时文件避免输入/输出路径相同导致 ffmpeg 失败
     tmp = output_path.with_suffix(".tmp.mp4")
     cmd = [
-        "ffmpeg", "-i", str(video_path),
+        ffmpeg_bin, "-i", str(video_path),
         "-i", str(audio_path),
         "-c:v", "copy",
         "-c:a", "aac",

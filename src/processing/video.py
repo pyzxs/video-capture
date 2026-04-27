@@ -2,7 +2,10 @@ import json
 import subprocess
 from pathlib import Path
 
-from src.config import OUTPUT_DIR
+from src.config import OUTPUT_DIR, BASE_DIR
+
+_ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
+_ffprobe_bin = str(Path(BASE_DIR) / "bin" / "ffprobe")
 
 
 def extract_audio(video_path: str, audio_path: str | None = None) -> str:
@@ -16,7 +19,7 @@ def extract_audio(video_path: str, audio_path: str | None = None) -> str:
         audio_path = str(OUTPUT_DIR / f"{video_path.stem}_audio.wav")
 
     cmd = [
-        "ffmpeg", "-i", str(video_path),
+        _ffmpeg_bin, "-i", str(video_path),
         "-vn", "-acodec", "pcm_s16le",
         "-ar", "16000", "-ac", "1",
         "-y", str(audio_path),
@@ -36,7 +39,7 @@ def separate_vocals(audio_path: str, output_path: str | None = None) -> str:
         output_path = str(p.parent / f"{p.stem}_vocals{p.suffix}")
 
     cmd = [
-        "ffmpeg", "-i", str(audio_path),
+        _ffmpeg_bin, "-i", str(audio_path),
         "-af", "pan=mono|c0=FL+FR,highpass=f=200,lowpass=f=4000",
         "-y", str(output_path),
     ]
@@ -58,7 +61,7 @@ def split_video_clip(
     crop: ffmpeg crop 表达式，如 "1280:610:0:0"（裁掉底部 110px）
     """
     cmd = [
-        "ffmpeg",
+        _ffmpeg_bin,
         "-ss", str(start), "-to", str(end),
         "-i", str(video_path),
         "-ss", str(start), "-to", str(end),
@@ -81,7 +84,7 @@ def split_video_clip(
 def get_video_duration(video_path: str) -> float:
     """使用 ffprobe 获取视频时长（秒）。"""
     cmd = [
-        "ffprobe", "-v", "error", "-show_entries",
+        _ffprobe_bin, "-v", "error", "-show_entries",
         "format=duration", "-of",
         "default=noprint_wrappers=1:nokey=1",
         str(video_path),
@@ -102,7 +105,7 @@ def get_video_metadata(video_path: str) -> dict:
         }
     """
     cmd = [
-        "ffprobe", "-v", "error", "-print_format", "json",
+        _ffprobe_bin, "-v", "error", "-print_format", "json",
         "-show_streams", "-select_streams", "v:0",
         str(video_path),
     ]

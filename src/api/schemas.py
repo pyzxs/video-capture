@@ -70,6 +70,19 @@ class SplitCutRequest(BaseModel):
     remove_audio: bool = True
 
 
+class SmartSubtitlesOut(BaseModel):
+    subtitles: list[dict] | None = None
+    segment_count: int = 0
+
+
+class SmartExtractAudioOut(BaseModel):
+    audio_path: str
+
+
+class SmartAnalyzeRequest(BaseModel):
+    subtitles: list[dict] | None = None
+    audio_path: str
+    language: str = "zh"
 
 
 class VideoDubRequest(BaseModel):

@@ -1591,7 +1591,7 @@ export default {
       localLoading.value = true
       try {
         const skip = (localPage.value - 1) * localPageSize
-        const params = { skip, limit: localPageSize }
+        const params = { skip, limit: localPageSize, status: 1 }
         if (matFolderId.value) params.folder_id = matFolderId.value
         const res = await materialApi.list(params)
         const items = res.data?.items || res.data || []
@@ -1615,7 +1615,7 @@ export default {
 
     const loadTypeMaterials = async (type) => {
       try {
-        const params = { type, limit: 200 }
+        const params = { type, limit: 200, status: 1 }
         if (matFolderId.value) params.folder_id = matFolderId.value
         const res = await materialApi.list(params)
         const items = res.data?.items || res.data || []

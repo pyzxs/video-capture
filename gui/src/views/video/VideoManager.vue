@@ -380,33 +380,51 @@
 
         <!-- 模式选择 -->
         <div class="split-mode-tabs" v-if="!splitStarted && splitState !== 'done'">
-          <button class="split-mode-tab" :class="{ active: splitMode === 'auto' }" @click="splitMode = 'auto'">自动分割</button>
+          <button class="split-mode-tab" :class="{ active: splitMode === 'auto' }" @click="splitMode = 'auto'">智能分割</button>
           <button class="split-mode-tab" :class="{ active: splitMode === 'manual' }" @click="splitMode = 'manual'">手动分割</button>
         </div>
 
-        <!-- ────────── 自动分割（原流程） ────────── -->
+        <!-- ────────── 智能分割 ────────── -->
         <template v-if="splitMode === 'auto'">
           <!-- 步骤进度 -->
           <div class="split-steps">
             <div v-for="(step, idx) in splitSteps" :key="idx" class="split-step"
-              :class="step.status">
+              :class="step.status" :title="step.desc">
               <span class="split-step-icon">
                 <svg v-if="step.status === 'done'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 <svg v-else-if="step.status === 'doing'" class="spin" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
                 <svg v-else-if="step.status === 'error'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                 <span v-else class="step-num">{{ idx + 1 }}</span>
               </span>
-              <span class="split-step-label">{{ step.label }}</span>
+              <div class="split-step-text">
+                <span class="split-step-label">{{ step.label }}</span>
+                <span class="split-step-desc">{{ step.desc }}</span>
+              </div>
             </div>
           </div>
 
           <!-- 等待开始 -->
           <template v-if="!splitStarted">
-            <p class="modal-desc" style="margin-top:0">点击下方按钮开始分析视频，将按步骤提取时间轴、切割片段并生成素材。</p>
+            <div class="smart-desc">
+              <div class="smart-desc-title">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                智能分割流程说明
+              </div>
+              <p class="smart-desc-intro">智能分割通过以下 7 个步骤，将原始视频自动拆分为可直接使用的素材片段：</p>
+              <ol class="smart-desc-steps">
+                <li><strong>分析视频软字幕</strong> — 检测视频是否内嵌 SRT/ASS 字幕流，优先使用字幕作为文本来源</li>
+                <li><strong>提取视频音频</strong> — 通过 ffmpeg 将视频音轨提取为 16kHz 单声道 WAV 文件</li>
+                <li><strong>提取音频到文字</strong> — 使用 Whisper 本地语音识别模型将音频转录为带时间戳的文字</li>
+                <li><strong>分析语义到自然段落</strong> — 通过 LLM 大模型分析语义完整性，过滤无关内容，合并为自然段落</li>
+                <li><strong>按自然段落分割</strong> — 根据段落时间戳使用 ffmpeg 精确切割视频画面</li>
+                <li><strong>去除视频音频</strong> — 移除分割后片段的原始音频轨道，生成纯画面素材</li>
+                <li><strong>生成素材列表</strong> — 创建素材数据库记录，建立向量索引供后续检索和混剪</li>
+              </ol>
+            </div>
             <div class="split-start-action">
               <button class="btn btn-primary" @click="startSplitAnalysis">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
-                开始分析
+                开始智能分割
               </button>
             </div>
           </template>
@@ -419,6 +437,11 @@
                 <div class="progress-fill processing-anim"></div>
               </div>
             </div>
+            <p class="split-current-desc">
+              <template v-for="(step, idx) in splitSteps" :key="idx">
+                <span v-if="step.status === 'doing'">{{ step.label }}：{{ step.desc }}</span>
+              </template>
+            </p>
           </template>
 
           <!-- 错误信息 -->

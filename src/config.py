@@ -51,6 +51,7 @@ DATABASE_URL = "sqlite:///resource/database/material.db"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+OUTPUT_DIR = Path(BASE_DIR + "/resource/output")
 
 def _load() -> dict:
     if _CONFIG_PATH.exists():

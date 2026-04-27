@@ -73,8 +73,11 @@ def dub_video(video_path: str, audio_path: str, output_path: str | None = None) 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         output_path = str(OUTPUT_DIR / f"{video_path.stem}_dubbed{video_path.suffix}")
 
+    from pathlib import Path
+    from src.config import BASE_DIR
+    _ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
     cmd = [
-        "ffmpeg", "-i", str(video_path),
+        _ffmpeg_bin, "-i", str(video_path),
         "-i", str(audio_path),
         "-c:v", "copy",
         "-c:a", "aac",

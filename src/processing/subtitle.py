@@ -5,11 +5,14 @@ import re
 import subprocess
 from pathlib import Path
 
-from src.config import get_config
+from src.config import get_config, BASE_DIR
 from src.logger import default_logger as logger
 from src.processing.asr import transcribe
 from src.processing.ffmpeg import extract_audio
 from src.utils import ensure_date_dir, ts_to_seconds
+
+_ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
+_ffprobe_bin = str(Path(BASE_DIR) / "bin" / "ffprobe")
 
 
 def parse_srt(path: str | Path) -> list[dict]:
@@ -92,7 +95,7 @@ def parse_subtitles(path: str | Path, fmt: str = ".srt") -> list[dict]:
 def _ffmpeg_stream_info(video_path: str) -> list[dict]:
     """通过 ffprobe 返回所有字幕流信息。"""
     cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
+        _ffprobe_bin, "-v", "quiet", "-print_format", "json",
         "-show_streams", "-select_streams", "s",
         str(video_path),
     ]
@@ -136,7 +139,7 @@ def extract_soft_subtitles(video_path: str) -> list[dict] | None:
     sub_path = str(ensure_date_dir(get_config("material_dir"), f"{stem}_subs{ext}"))
 
     cmd = [
-        "ffmpeg", "-i", str(video_path),
+        _ffmpeg_bin, "-i", str(video_path),
         "-map", f"0:{idx}",
         "-y", sub_path,
     ]
