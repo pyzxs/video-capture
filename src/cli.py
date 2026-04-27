@@ -109,7 +109,7 @@ def dub(
 @app.command()
 def web(
     host: str = typer.Option("127.0.0.1", "--host", help="监听地址"),
-    port: int = typer.Option(8000, "--port", "-p", help="监听端口"),
+    port: int = typer.Option(8090, "--port", "-p", help="监听端口"),
     reload: bool = typer.Option(False, "--reload", help="热重载"),
 ):
     """启动 Web 服务（FastAPI + 前端）。"""

@@ -20,4 +20,4 @@ gui/node_modules
 _patch.py
 database
 model
-bin/*
+bin
