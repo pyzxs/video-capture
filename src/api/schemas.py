@@ -207,6 +207,10 @@ class AutoGenerateRequest(BaseModel):
     folder_id: int | None = None
 
 
+class AutoBatchGenerateRequest(AutoGenerateRequest):
+    count: int = 1
+
+
 # ── Paginated ──
 
 class PaginatedVideos(BaseModel):

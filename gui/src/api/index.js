@@ -72,6 +72,7 @@ export const generatedApi = {
   generate: (id, voice) => api.post(`/generated/${id}/generate`, null, { params: { voice: voice || '' }, timeout: 600000 }),
   dub: (id, voice) => api.post(`/generated/${id}/dub`, { voice }, { timeout: 600000 }),
   autoGenerate: (data) => api.post('/generated/auto-generate', data, { timeout: 600000 }),
+  autoBatchGenerate: (data) => api.post('/generated/auto-batch-generate', data, { timeout: 600000 }),
   autoSearch: (data) => api.post('/generated/auto-search', data, { timeout: 60000 }),
 }
 

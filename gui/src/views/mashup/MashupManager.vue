@@ -154,6 +154,7 @@
                 <div class="label-row">
                   <span>描述 / 脚本</span>
                   <div class="label-row-actions">
+                    <span class="batch-label">批次生成<input type="number" v-model.number="autoForm.batchCount" class="batch-input" min="1" @change="autoForm.batchCount = Math.max(1, Math.min(50, autoForm.batchCount || 1))" /></span>
                     <select v-model="autoForm.ratioIdx" class="filter-select ratio-select">
                       <option value="">请选择画面比率</option>
                       <option value="0">1920×1080 (16:9)</option>
