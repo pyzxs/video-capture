@@ -2,7 +2,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, UploadFile, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -112,9 +112,11 @@ def dub_video(video_id: int, data: VideoDubRequest, db: Session = Depends(get_db
 def upload_video(
         file: UploadFile,
         language: str = "zh",
-        folder_id: int | None = None,
+        folder_id: int | None = Form(default=None),
+        extract_text: bool = Form(default=True),
         db: Session = Depends(get_db),
 ):
+    logger.info("参数信息: {} {}".format(folder_id, extract_text))
     ext = Path(file.filename).suffix if file.filename else ".mp4"
     filename = file.filename or f"{uuid.uuid4().hex}{ext}"
 
@@ -127,7 +129,7 @@ def upload_video(
     duration = get_video_duration(filepath)
     meta = get_video_metadata(filepath)
 
-    logger.info("获取视频元数据信息%s", meta)
+    logger.info("获取视频元数据信息{} {}".format(meta, folder_id))
     v = Video(
         filename=filename,
         filepath=filepath,
@@ -142,17 +144,20 @@ def upload_video(
     db.commit()
     db.refresh(v)
     content = ""
-    try:
+    if extract_text:
         try:
-            audio_path = extract_audio(filepath)
-            print(f"获取实际音频地址 {audio_path}")
-            content = transcribe_by_api(audio_path, language=language)
+            try:
+                audio_path = extract_audio(filepath)
+                print(f"获取实际音频地址 {audio_path}")
+                content = transcribe_by_api(audio_path, language=language)
+            except Exception as e:
+                logger.error(f"ASR 提取语音失败:{e}")
+            new_status = "completed"
         except Exception as e:
-            logger.error(f"ASR 提取语音失败:{e}")
+            logger.error("ASR 处理失败: %s", e)
+            new_status = "failed"
+    else:
         new_status = "completed"
-    except Exception as e:
-        logger.error("ASR 处理失败: %s", e)
-        new_status = "failed"
 
     v2 = db.query(Video).get(v.id)
     if v2:
@@ -204,17 +209,20 @@ async def download_video(data: VideoDownloadRequest, db: Session = Depends(get_d
     )
 
     content = ""
-    try:
+    if data.extract_text:
         try:
-            audio_path = extract_audio(str(filepath))
-            print(f"获取实际音频地址 {audio_path}")
-            content = transcribe_by_api(audio_path)
+            try:
+                audio_path = extract_audio(str(filepath))
+                print(f"获取实际音频地址 {audio_path}")
+                content = transcribe_by_api(audio_path)
+            except Exception as e:
+                logger.error(f"ASR 提取语音失败:{e}")
+            new_status = "completed"
         except Exception as e:
-            logger.error(f"ASR 提取语音失败:{e}")
+            logger.error("ASR 处理失败: %s", e)
+            new_status = "failed"
+    else:
         new_status = "completed"
-    except Exception as e:
-        logger.error("ASR 处理失败: %s", e)
-        new_status = "failed"
 
     v.status = new_status
     v.content = content
@@ -315,14 +323,14 @@ def split_cut(video_id: int, data: SplitCutRequest, db: Session = Depends(get_db
                 start=p.start,
                 end=p.end,
                 output_path=str(seg_path),
-                no_audio=True,
+                no_audio=data.remove_audio,
             )
         except Exception:
             continue
 
         # 提取该段文本（为空则通过 ASR 自动识别）
         text = p.text or ""
-        if not text.strip():
+        if data.extract_text and not text.strip():
             try:
                 seg_audio = str(ensure_date_dir(
                     get_config("material_dir"), f"seg_audio_{video_id}_{p.seq_index}.wav"))
@@ -377,6 +385,44 @@ def split_cut(video_id: int, data: SplitCutRequest, db: Session = Depends(get_db
         material_ids=material_ids,
         materials=materials,
     ).model_dump(mode="json"), message="分割完成")
+
+
+@router.post("/{video_id}/save-to-notes", description="将视频文案保存到笔记（经笔记智能体排版）")
+def save_video_to_notes(video_id: int, db: Session = Depends(get_db)):
+    """将视频文案通过笔记助手排版后保存到默认笔记文件夹。"""
+    from src.db.models import Note as NoteModel
+    from src.services.agents import call_agent
+
+    v = db.query(Video).get(video_id)
+    if not v:
+        raise fail_response(status_code=404, message="视频不存在")
+    if not v.content:
+        raise fail_response(status_code=400, message="视频暂无文案")
+
+    # 通过笔记助手排版
+    formatted = call_agent("note_ast", v.content, max_tokens=4000)
+
+    # 查找系统默认笔记文件夹
+    folder = db.query(NoteModel).filter(
+        NoteModel.is_system == True,
+        NoteModel.tp == "folder",
+    ).first()
+
+    note = NoteModel(
+        title=v.filename or f"视频 #{video_id} 笔记",
+        content=formatted,
+        parent_id=folder.id if folder else None,
+        tp="note",
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+
+    from src.api.schemas import NoteOut
+    return response_success(
+        data=NoteOut.model_validate(note).model_dump(mode="json"),
+        message="已保存到笔记",
+    )
 
 
 @router.post("/{video_id}/split")

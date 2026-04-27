@@ -66,6 +66,8 @@ class SplitAnalyzeOut(BaseModel):
 
 class SplitCutRequest(BaseModel):
     paragraphs: list[ParagraphItem]
+    extract_text: bool = True
+    remove_audio: bool = True
 
 
 
@@ -77,6 +79,7 @@ class VideoDownloadRequest(BaseModel):
     urls: str = ""
     proxy: str = ""
     folder_id: int | None = None
+    extract_text: bool = True
 
 
 # ── Material ──
@@ -171,6 +174,7 @@ class GeneratedVideoUpdate(BaseModel):
 class MaterialTtsRequest(BaseModel):
     text: str = ""
     voice: str | None = None
+    folder_id: int | None = None
 
 
 class GenDubRequest(BaseModel):
@@ -261,6 +265,7 @@ class NoteOut(BaseModel):
     content: str = ""
     parent_id: int | None = None
     tp: str = "note"
+    is_system: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

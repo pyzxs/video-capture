@@ -81,6 +81,8 @@ export default {
 
     // Manual split
     const splitMode = ref('auto')
+    const splitExtractText = ref(true)
+    const splitRemoveAudio = ref(true)
     const manualVideoEl = ref(null)
     const splitCurrentTime = ref(0)
     const videoDuration = ref(0)
@@ -171,7 +173,11 @@ export default {
 
       splitDoingText.value = `正在切割 ${paragraphs.length} 个视频片段...`
       try {
-        const res = await videoApi.splitCut(v.id, { paragraphs })
+        const res = await videoApi.splitCut(v.id, {
+          paragraphs,
+          extract_text: splitExtractText.value,
+          remove_audio: splitRemoveAudio.value,
+        })
         const d = res.data.data || res.data
         const items = d.materials || []
         if (items.length === 0) {
@@ -222,6 +228,7 @@ export default {
     const processing = ref(false)
     const uploadProgress = ref(0)
     const uploadLang = ref('zh')
+    const uploadExtract = ref(true)
     const fileInput = ref(null)
 
     // Download dialog
@@ -229,6 +236,7 @@ export default {
     const downloadChannel = ref('douyin')
     const downloadUrls = ref('')
     const downloadProxy = ref('')
+    const downloadExtract = ref(true)
     const downloading = ref(false)
     const downloadResults = ref([])
     const channels = [
@@ -303,6 +311,7 @@ export default {
     const openUpload = () => {
       selectedFile.value = null
       uploading.value = false
+      uploadExtract.value = true
       showDialog.value = true
     }
 
@@ -334,7 +343,7 @@ export default {
       try {
         const res = await videoApi.upload(selectedFile.value, uploadLang.value, (pe) => {
           if (pe.total) uploadProgress.value = Math.round((pe.loaded / pe.total) * 100)
-        }, selectedFolderId.value)
+        }, selectedFolderId.value, uploadExtract.value)
         // 上传完成，等待 ASR 后台处理
         uploading.value = false
         processing.value = true
@@ -373,6 +382,7 @@ export default {
       downloadChannel.value = 'douyin'
       downloadUrls.value = ''
       downloadProxy.value = ''
+      downloadExtract.value = true
       downloading.value = false
       downloadResults.value = []
       showDownload.value = true
@@ -392,6 +402,8 @@ export default {
           channel: downloadChannel.value,
           urls: downloadUrls.value,
           proxy: downloadProxy.value,
+          extract_text: downloadExtract.value,
+          folder_id: selectedFolderId.value || undefined,
         })
         const data = res.data
         const raw = data?.data
@@ -576,6 +588,22 @@ export default {
     }
 
 
+    const saveToNote = async () => {
+      const v = editingVideo.value
+      if (!v) return
+      if (!v.content) {
+        toast.warning('视频暂无文案，请先保存文案')
+        return
+      }
+      if (!await toast.confirm('确定将文案保存到笔记？将经由笔记智能体排版后存入默认笔记文件夹。')) return
+      try {
+        await videoApi.saveToNote(v.id)
+        toast.success('已保存到笔记')
+      } catch (e) {
+        toast.error('保存失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
+      }
+    }
+
     const startDub = async () => {
       if (!editingVideo.value || !editForm.value.content) { toast.warning('请先输入文案'); return }
       dubbing.value = true
@@ -757,6 +785,13 @@ export default {
       loadVideos()
     }
 
+    const calcAspectRatio = (w, h) => {
+      if (!w || !h) return '-'
+      const gcd = (a, b) => b ? gcd(b, a % b) : a
+      const d = gcd(w, h)
+      return `${w / d}:${h / d}`
+    }
+
     const formatDuration = (s) => {
       if (!s) return '-'
       const m = Math.floor(s / 60)
@@ -786,21 +821,21 @@ export default {
       page, pageSize, total, onPageChange,
       folders, selectedFolderId, folderMap,
       showMoveDialog, showMoveFolder, closeMoveDialog, moveToFolder, showBatchMoveFolder, batchDeleteVideos,
-      showDialog, selectedFile, dragging, uploading, processing, uploadProgress, uploadLang, fileInput,
+      showDialog, selectedFile, dragging, uploading, processing, uploadProgress, uploadLang, uploadExtract, fileInput,
       openUpload, closeDialog, clearFile, onFileSelect, onDrop, startUpload,
-      showDownload, downloadChannel, downloadUrls, downloadProxy, downloading, downloadResults, channels,
+      showDownload, downloadChannel, downloadUrls, downloadProxy, downloadExtract, downloading, downloadResults, channels,
       openDownload, closeDownload, startDownload,
       showEdit, showEditPreview, editForm, editingVideo, saving, mdTextarea,
-      openEdit, closeEdit, saveEdit, startDub, dubbing, mdInsert, mdLink, renderMarkdown,
+      openEdit, closeEdit, saveEdit, saveToNote, startDub, dubbing, mdInsert, mdLink, renderMarkdown,
       copyContent, deleteVideo,
       hoverPlay, hoverPause,
       showSplit, splitStarted, splitState, splitSteps, splitDoing, splitDoingText, splitError,
       splitMaterials, splitVideoRef, openSplit, startSplitAnalysis, closeSplit, deleteSplitMaterial,
       selectedIds, isAllSelected, viewMode, toggleSelect, toggleSelectAll, clearSelection, truncateFilename, batchDeleteVideos,
-      splitMode, manualVideoEl, splitCurrentTime, videoDuration, splitPoints, splitSegments,
+      splitMode, splitExtractText, splitRemoveAudio, manualVideoEl, splitCurrentTime, videoDuration, splitPoints, splitSegments,
       manualTimelineEl, formatSplitTime, onManualLoaded, onManualTimeUpdate, onTimelineClick,
       addSplitPoint, removeSplitPoint, removeSegmentSplit, clearSplitPoints, startManualCut,
-      formatDuration, formatTime, truncate, formatSize,
+      calcAspectRatio, formatDuration, formatTime, truncate, formatSize,
       // AI chat
       showChat, chatMessages, chatInput, chatLoading, chatMessagesRef,
       agents, selectedAgentId,

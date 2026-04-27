@@ -11,11 +11,12 @@ export default api
 export const videoApi = {
   list: (params) => api.get('/videos', { params }),
   get: (id) => api.get(`/videos/${id}`),
-  upload: (file, language, onProgress, folderId) => {
+  upload: (file, language, onProgress, folderId, extractText) => {
     const fd = new FormData()
     fd.append('file', file)
     if (language) fd.append('language', language)
     if (folderId !== null && folderId !== undefined) fd.append('folder_id', folderId)
+    fd.append('extract_text', extractText !== false)
     return api.post('/videos/upload', fd, {
       onUploadProgress: onProgress,
       timeout: 600000,
@@ -27,6 +28,7 @@ export const videoApi = {
   split: (id, language) => api.post(`/videos/${id}/split`, null, { params: { language } }),
   splitAnalyze: (id, language) => api.post(`/videos/${id}/split/analyze`, null, { params: { language } }),
   splitCut: (id, data) => api.post(`/videos/${id}/split/cut`, data, { timeout: 600000 }),
+  saveToNote: (id) => api.post(`/videos/${id}/save-to-notes`),
   rewriteChat: (id, data) => api.post(`/videos/${id}/rewrite-chat`, data, { timeout: 120000 }),
   dub: (id, data) => api.post(`/videos/${id}/dub`, data, { timeout: 600000 }),
 }
@@ -110,4 +112,9 @@ export const noteApi = {
   create: (data) => api.post('/notes', data),
   update: (id, data) => api.put(`/notes/${id}`, data),
   remove: (id) => api.delete(`/notes/${id}`),
+  uploadImage: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post('/notes/upload-image', fd)
+  },
 }

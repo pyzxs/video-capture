@@ -58,6 +58,7 @@
               @mouseleave="hoverPause($event)"
             ></video>
           </div>
+          <div class="card-name" :title="v.filename">{{ truncateFilename(v.filename) }}</div>
           <div class="card-meta">
             <span class="meta-item">{{ v.frame_width }}x{{ v.frame_height }}</span>
             <span class="meta-item">{{ v.frame_rate }}fps</span>
@@ -138,7 +139,7 @@
             </button>
           </div>
         </div>
-        <p class="modal-desc">上传后将自动提取元数据（分辨率、帧率）和文案（ASR 语音转文字）。</p>
+        <p class="modal-desc">上传后将自动提取元数据（分辨率、帧率）。</p>
         <div class="upload-zone" @drop.prevent="onDrop" @dragover.prevent
              :class="{ 'drag-over': dragging }" @dragenter="dragging = true" @dragleave="dragging = false">
           <input ref="fileInput" type="file" accept=".mp4,.avi,.mkv,.mov,.webm,.flv" hidden @change="onFileSelect" />
@@ -157,12 +158,9 @@
         </div>
 
         <div class="upload-options">
-          <label>ASR 语言
-            <select v-model="uploadLang">
-              <option value="zh">中文</option>
-              <option value="en">英文</option>
-              <option value="ja">日文</option>
-            </select>
+          <label class="dl-extract">
+            <input type="checkbox" v-model="uploadExtract" />
+            上传后提取文案（语音转文字）
           </label>
         </div>
 
@@ -170,7 +168,7 @@
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
           </div>
-          <span>{{ processing ? '正在 ASR 文字识别，请稍候...' : '上传中 ' + uploadProgress + '%' }}</span>
+          <span>{{ processing ? '正在提取文案，请稍候...' : '上传中 ' + uploadProgress + '%' }}</span>
         </div>
 
       </div>
@@ -180,7 +178,7 @@
     <div v-if="showDownload" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
-          <h3>网络下载视频</h3>
+          <h3>网络视频下载</h3>
           <div class="modal-actions">
             <button class="btn btn-primary" @click="startDownload" :disabled="!downloadUrls || downloading" title="下载">
               <svg v-if="!downloading" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -206,6 +204,10 @@
             <textarea v-model="downloadUrls" rows="4" class="dl-textarea" placeholder="视频详情分享链接或分享内容"></textarea>
           </label>
 
+          <label class="dl-extract">
+            <input type="checkbox" v-model="downloadExtract" />
+            下载后提取文案（语音转文字）
+          </label>
         </div>
 
         <div v-if="downloadResults.length > 0" class="dl-results">
@@ -239,10 +241,23 @@
               <label>文件名
                 <input v-model="editForm.filename" class="readonly-input" />
               </label>
+              <div class="video-meta-row">
+                <span class="meta-item"><span class="meta-lbl">画面比率</span> {{ calcAspectRatio(editingVideo?.frame_width, editingVideo?.frame_height) }}</span>
+                <span class="meta-item"><span class="meta-lbl">帧率</span> {{ editingVideo?.frame_rate ?? '-' }}fps</span>
+                <span class="meta-item"><span class="meta-lbl">时长</span> {{ formatDuration(editingVideo?.duration) }}</span>
+              </div>
               <label>
                 <div class="label-row">
                   <span>文案</span>
                   <div class="label-row-actions">
+                    <button class="agent-btn" @click="saveToNote" title="保存到笔记">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        <line x1="8" y1="7" x2="16" y2="7"/>
+                        <line x1="8" y1="11" x2="14" y2="11"/>
+                      </svg>
+                    </button>
                     <button class="agent-btn" @click="toggleChat" :title="showChat ? '关闭 AI 助手' : 'AI 改写文案'">
                       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -472,6 +487,14 @@
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                   保存分割（{{ splitSegments.length }} 段）
                 </button>
+                <label class="toolbox-checkbox">
+                  <input type="checkbox" v-model="splitExtractText" />
+                  提取文案
+                </label>
+                <label class="toolbox-checkbox">
+                  <input type="checkbox" v-model="splitRemoveAudio" />
+                  去除音频
+                </label>
               </div>
             </div>
 

@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db
 from src.api.schemas import NoteCreate, NoteOut, NoteTreeOut, NoteUpdate
+from src.config import get_config
 from src.db.models import Note
 
 router = APIRouter(prefix="/notes", tags=["笔记管理"])
@@ -45,6 +50,31 @@ def get_note_tree(db: Session = Depends(get_db)):
     return {"tree": _build_tree(items)}
 
 
+@router.post("/upload-image")
+def upload_note_image(file: UploadFile):
+    """上传笔记中粘贴的图片，返回可访问的 URL。"""
+    ext = Path(file.filename).suffix.lower() if file.filename else ".png"
+    if ext not in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:
+        raise HTTPException(400, "不支持的图片格式")
+    filename = f"note_paste_{uuid.uuid4().hex}{ext}"
+    note_dir = Path(get_config("material_dir")) / "note_pastes"
+    note_dir.mkdir(parents=True, exist_ok=True)
+    dest = note_dir / filename
+    with open(dest, "wb") as f:
+        import shutil
+        shutil.copyfileobj(file.file, f)
+    return {"url": f"/api/notes/files/{filename}"}
+
+
+@router.get("/files/{filename}")
+def get_note_image(filename: str):
+    """提供笔记中粘贴的图片文件。"""
+    path = Path(get_config("material_dir")) / "note_pastes" / filename
+    if not path.exists():
+        raise HTTPException(404, "文件不存在")
+    return FileResponse(str(path))
+
+
 @router.get("/{note_id}")
 def get_note(note_id: int, db: Session = Depends(get_db)):
     n = db.query(Note).get(note_id)
@@ -72,6 +102,8 @@ def update_note(note_id: int, data: NoteUpdate, db: Session = Depends(get_db)):
     n = db.query(Note).get(note_id)
     if not n:
         raise HTTPException(404, "笔记不存在")
+    if n.is_system:
+        raise HTTPException(403, "系统文件夹不允许编辑")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(n, k, v)
     db.commit()
@@ -84,6 +116,8 @@ def delete_note(note_id: int, db: Session = Depends(get_db)):
     n = db.query(Note).get(note_id)
     if not n:
         raise HTTPException(404, "笔记不存在")
+    if n.is_system:
+        raise HTTPException(403, "系统文件夹不允许删除")
     # 删除子节点
     children = db.query(Note).filter(Note.parent_id == note_id).all()
     for child in children:

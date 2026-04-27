@@ -258,6 +258,7 @@ def create_material_by_tts(
         filename=audio_filename,
         filepath=audio_path,
         status=1,
+        folder_id=data.folder_id,
     )
     db.add(material)
     db.commit()

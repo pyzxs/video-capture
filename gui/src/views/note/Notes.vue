@@ -19,10 +19,10 @@
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           <span class="tree-item-name">{{ f.title || '未命名' }}</span>
           <div class="tree-item-actions">
-            <button class="btn-icon" @click.stop="openFolderDialog(f)" title="编辑">
+            <button v-if="!f.is_system" class="btn-icon" @click.stop="openFolderDialog(f)" title="编辑">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
             </button>
-            <button class="btn-icon btn-icon-danger" @click.stop="deleteFolder(f)" title="删除">
+            <button v-if="!f.is_system" class="btn-icon btn-icon-danger" @click.stop="deleteFolder(f)" title="删除">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
           </div>
@@ -48,12 +48,20 @@
         <div v-if="loading" class="loading">加载中...</div>
         <div v-else-if="notes.length === 0" class="empty">暂无笔记</div>
         <div v-else v-for="n in notes" :key="n.id" class="note-card" @click="editNote(n)">
-          <div class="note-card-title">{{ n.title || '无标题' }}</div>
-          <div class="note-card-preview">{{ n.content ? n.content.substring(0, 120) : '无内容' }}</div>
-          <div class="note-card-time">{{ formatDate(n.updated_at) }}</div>
+          <div class="note-card-body">
+            <div class="note-card-title">{{ n.title || '无标题' }}</div>
+            <div class="note-card-preview">{{ n.content ? n.content.substring(0, 120) : '无内容' }}</div>
+            <div class="note-card-time">{{ formatDate(n.updated_at) }}</div>
+          </div>
           <div class="note-card-actions">
             <button @click.stop="openMoveDialog(n)" title="移动到文件夹">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1"/><path d="M17 22v-6"/><path d="M20 19l-3-3-3 3"/></svg>
+            </button>
+            <button @click.stop="exportNote(n)" title="导出 Markdown">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button @click.stop="openTtsDialog(n)" title="合成为语音素材">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
             </button>
             <button @click.stop="deleteNote(n)" title="删除">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -75,15 +83,6 @@
             </button>
             <button class="btn btn-sm btn-agent" @click="toggleAgentChat" :class="{ active: showAgentChat }" title="智能体">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>
-            </button>
-            <select v-model="ttsVoice" class="voice-select" title="选择配音音色">
-              <option value="">默认音色</option>
-              <option v-for="opt in voiceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-            <button class="btn btn-sm btn-agent" @click="synthesizeNote" :disabled="ttsBusy || !noteForm.content.trim()" title="合成为语音素材">
-              <svg v-if="!ttsBusy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-              <span v-else class="btn-loading" style="margin-right:4px"></span>
-              <span v-if="ttsBusy">正在合成为语音素材</span>
             </button>
           </div>
           <input v-model="noteForm.title" class="editor-title" placeholder="笔记标题" />
@@ -111,7 +110,7 @@
                 {{ showPreview ? '编辑' : '预览' }}
               </button>
             </div>
-            <textarea v-if="!showPreview" ref="mdTextarea" v-model="noteForm.content" rows="16" class="md-textarea" placeholder="开始写笔记..." @keyup="onMdCursor" @mouseup="onMdCursor"></textarea>
+            <textarea v-if="!showPreview" ref="mdTextarea" v-model="noteForm.content" rows="16" class="md-textarea" placeholder="开始写笔记..." @keyup="onMdCursor" @mouseup="onMdCursor" @paste="handlePaste"></textarea>
             <div v-else class="md-preview" v-html="renderMarkdown(noteForm.content)"></div>
           </div>
         </div>
@@ -191,6 +190,38 @@
         <div class="modal-actions">
           <button class="btn btn-default" @click="showMoveDialog = false">取消</button>
           <button class="btn btn-primary" @click="moveNote" :disabled="moveSaving">{{ moveSaving ? '移动中...' : '移动' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 语音合成弹窗 -->
+    <div v-if="showTtsDialog" class="modal-overlay" @click.self="closeTtsDialog">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h3>合成为语音素材</h3>
+          <div class="modal-actions">
+            <button class="btn btn-default" @click="closeTtsDialog" title="关闭">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="form">
+          <label>配音音色
+            <select v-model="ttsVoice" class="form-select">
+              <option value="">默认音色</option>
+              <option v-for="opt in voiceOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </label>
+          <label>素材文件夹
+            <select v-model="ttsFolderId" class="form-select">
+              <option :value="null">无文件夹</option>
+              <option v-for="f in materialFolders" :key="f.id" :value="f.id">{{ f.name }}</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-default" @click="closeTtsDialog">取消</button>
+          <button class="btn btn-primary" @click="synthesizeNoteTts" :disabled="ttsBusy">{{ ttsBusy ? '合成中...' : '合成' }}</button>
         </div>
       </div>
     </div>

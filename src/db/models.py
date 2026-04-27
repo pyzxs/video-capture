@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.db.engine import Base
@@ -100,6 +100,7 @@ class Note(Base):
     content = Column(Text, default="")
     parent_id = Column(Integer, ForeignKey("notes.id"), nullable=True)
     tp = Column(String(20), nullable=False, default="note")  # note or folder
+    is_system = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

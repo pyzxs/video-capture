@@ -1,4 +1,4 @@
-import { noteApi, agentApi, materialApi } from '../../api'
+import { noteApi, agentApi, materialApi, folderApi } from '../../api'
 import { useToast } from '../../composables/useToast.js'
 
 export default {
@@ -30,6 +30,10 @@ export default {
       // TTS
       ttsVoice: '',
       ttsBusy: false,
+      showTtsDialog: false,
+      ttsNote: null,
+      ttsFolderId: null,
+      materialFolders: [],
       voiceOptions: [
         { label: 'Alex（亚力克斯）', value: 'FunAudioLLM/CosyVoice2-0.5B:alex' },
         { label: 'Anna（安娜）', value: 'FunAudioLLM/CosyVoice2-0.5B:anna' },
@@ -192,6 +196,20 @@ export default {
         this.toast.error('删除失败')
       }
     },
+    exportNote(n) {
+      const title = n.title || '无标题'
+      const content = n.content || ''
+      const md = `# ${title}\n\n${content}`
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${title.replace(/[\\/:*?"<>|]/g, '_')}.md`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
     // ── Move Note ──
     openMoveDialog(n) {
       this.moveTargetNote = n
@@ -212,6 +230,38 @@ export default {
         this.moveSaving = false
       }
     },
+    // ── Image paste ──
+    async handlePaste(e) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const file = item.getAsFile()
+          if (!file) continue
+          const ta = this.$refs.mdTextarea
+          if (!ta) return
+          const cursor = ta.selectionStart
+          try {
+            const res = await noteApi.uploadImage(file)
+            const url = res.data.url || res.data.data?.url
+            if (!url) continue
+            const imgTag = `![](${url})`
+            const text = this.noteForm.content
+            this.noteForm.content = text.substring(0, cursor) + imgTag + text.substring(cursor)
+            this.$nextTick(() => {
+              ta.focus()
+              const pos = cursor + imgTag.length
+              ta.setSelectionRange(pos, pos)
+            })
+          } catch (e) {
+            console.error('图片上传失败', e)
+          }
+          break
+        }
+      }
+    },
+
     // ── Markdown editor helpers ──
     onMdCursor() {
       const ta = this.$refs.mdTextarea
@@ -384,6 +434,46 @@ export default {
       this.ttsBusy = true
       try {
         await materialApi.tts({ text, voice: this.ttsVoice || undefined })
+        this.toast.success('语音合成成功，已生成音频素材')
+      } catch (e) {
+        this.toast.error('语音合成失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
+      } finally {
+        this.ttsBusy = false
+      }
+    },
+    // ── TTS Dialog (from note card list) ──
+    async loadMaterialFolders() {
+      try {
+        const res = await folderApi.list({ folder_type: 'material' })
+        this.materialFolders = res.data.items || []
+      } catch (e) {
+        console.error('加载素材文件夹失败', e)
+        this.materialFolders = []
+      }
+    },
+    openTtsDialog(n) {
+      this.ttsNote = n
+      this.ttsVoice = ''
+      this.ttsFolderId = null
+      this.showTtsDialog = true
+      this.loadMaterialFolders()
+    },
+    closeTtsDialog() {
+      this.showTtsDialog = false
+      this.ttsNote = null
+    },
+    async synthesizeNoteTts() {
+      const n = this.ttsNote
+      if (!n) return
+      const text = n.content?.trim()
+      if (!text) {
+        this.toast.warning('笔记内容为空')
+        return
+      }
+      this.ttsBusy = true
+      try {
+        await materialApi.tts({ text, voice: this.ttsVoice || undefined, folder_id: this.ttsFolderId || undefined })
+        this.closeTtsDialog()
         this.toast.success('语音合成成功，已生成音频素材')
       } catch (e) {
         this.toast.error('语音合成失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
