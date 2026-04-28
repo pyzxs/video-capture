@@ -439,6 +439,21 @@ export default {
       return `${m}:${String(sec).padStart(2, '0')}`
     }
 
+    // Lazy video loading
+    const activeVideos = ref(new Set())
+    const videoEls = {}
+    const activateVideo = (id) => {
+      const s = new Set(activeVideos.value)
+      s.add(id)
+      activeVideos.value = s
+      setTimeout(() => {
+        const el = videoEls[id]
+        if (el) el.play()
+      }, 100)
+    }
+    const setVideoRef = (id, el) => { if (el) videoEls[id] = el }
+    const onVideoLoaded = (e) => { e.target.play() }
+
     const hoverPlay = (e) => {
       const v = e.target
       if (v.readyState >= 2) v.play()
@@ -474,6 +489,7 @@ export default {
       toggleChat, sendChat, applyChatResult, clearChat, onAgentChange,
       showDescPreview, mdTextarea, mdInsert, mdLink, renderMarkdown,
       statusText, formatTime, truncate, formatDuration,
+      activeVideos, activateVideo, setVideoRef, onVideoLoaded,
       hoverPlay, hoverPause,
     }
   },

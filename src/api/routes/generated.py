@@ -16,7 +16,7 @@ from src.api.schemas import (
 )
 from src.config import get_config
 from src.logger import default_logger as logger
-from src.utils import ensure_date_dir
+from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
 from src.db.models import GeneratedVideo
 
 router = APIRouter(prefix="/generated", tags=["混剪视频管理"])
@@ -36,6 +36,7 @@ def _gen_to_dict(gen: GeneratedVideo) -> dict:
         "status": gen.status,
         "error_message": gen.error_message,
         "material_count": gen.material_count,
+        "thumbnail": thumb_url(gen.thumbnail),
         "data": gen.data or "{}",
         "created_at": gen.created_at.isoformat() if gen.created_at else None,
         "completed_at": gen.completed_at.isoformat() if gen.completed_at else None,
@@ -249,6 +250,7 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
         frame_height=data.frame_height or 0,
         frame_rate=frame_rate_val,
         material_count=len(matched_materials),
+        thumbnail=generate_thumbnail(final_output),
         data=json.dumps({"tracks": tracks}, ensure_ascii=False),
         folder_id=data.folder_id,
         completed_at=datetime.utcnow(),
@@ -444,10 +446,25 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
             ]
             try:
                 subprocess.run(cmd, check=True, capture_output=True)
-                segment_paths.append(seg_path)
+                # 验证裁剪出的片段包含有效的媒体流（避免 header-only 文件导致 concat 失败）
+                valid = False
+                try:
+                    probe = subprocess.run(
+                        [f"{ff}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                         "-of", "csv=p=0", str(seg_path)],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    valid = bool(probe.stdout.strip())
+                except Exception:
+                    pass
+                if valid:
+                    segment_paths.append(seg_path)
+                else:
+                    logger.warning("裁剪素材无有效媒体流 %s", fp)
+                    Path(seg_path).unlink(missing_ok=True)
             except subprocess.CalledProcessError as e:
                 logger.warning("裁剪素材失败 %s: %s", fp, e.stderr[-200:] if e.stderr else "")
-                continue
+                Path(seg_path).unlink(missing_ok=True)
 
     if not segment_paths:
         raise HTTPException(400, "没有素材可供拼接")
@@ -483,6 +500,7 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
 
     gen.status = "completed"
     gen.output_filepath = output
+    gen.thumbnail = generate_thumbnail(output)
     db.commit()
     return gen
 
@@ -527,6 +545,7 @@ def dub_video(gen_id: int, data: GenDubRequest, db: Session = Depends(get_db)):
         return _gen_to_dict(gen)
     except Exception as e:
         raise HTTPException(500, f"配音失败: {e}")
+
 
 
 @router.get("/{gen_id}/download")

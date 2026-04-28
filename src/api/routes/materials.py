@@ -14,7 +14,7 @@ from src.db.vector import VectorStore
 from src.db.models import Material
 from src.processing.ffmpeg import get_video_duration, get_video_metadata
 from src.services.tts import synthesize
-from src.utils import ensure_date_dir, get_image_size_imageio
+from src.utils import ensure_date_dir, get_image_size_imageio, generate_thumbnail, thumb_url
 
 router = APIRouter(prefix="/materials", tags=["素材管理"])
 
@@ -64,6 +64,12 @@ def list_materials(
             query = query.filter(Material.folder_id == folder_id)
     total = query.count()
     items = query.offset(skip).limit(limit).all()
+    # Convert thumbnail filepath to URL
+    for m in items:
+        if m.type == "image" and m.id:
+            m.thumbnail = f"/api/materials/{m.id}/file"
+        else:
+            m.thumbnail = thumb_url(m.thumbnail)
     return {"items": items, "total": total}
 
 
@@ -126,6 +132,12 @@ def create_material_with_file(
             raise HTTPException(400, "文本或场景类型必须提供内容")
 
     print(f" 类型{type}")
+    thumb = ""
+    if filepath:
+        if type in ("video", "scene"):
+            thumb = generate_thumbnail(filepath)
+        elif type == "image":
+            thumb = filepath  # 图片文件本身即可作为缩略图
     material = Material(
         type=type,
         content=content,
@@ -136,6 +148,7 @@ def create_material_with_file(
         frame_rate=frame_rate,
         filename=filename,
         filepath=filepath,
+        thumbnail=thumb,
         status=status,
         folder_id=folder_id,
     )
@@ -280,6 +293,7 @@ def create_material_by_tts(
         pass
 
     return material
+
 
 
 @router.get("/{material_id}/file")

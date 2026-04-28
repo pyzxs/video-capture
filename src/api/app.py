@@ -153,6 +153,15 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
+    @app.get("/api/thumbnails/{name}")
+    def serve_thumbnail(name: str):
+        from pathlib import Path
+        thumb_path = Path(BASE_DIR) / "thumbnails" / name
+        if not thumb_path.exists():
+            raise HTTPException(404, "缩略图不存在")
+        from starlette.responses import FileResponse
+        return FileResponse(thumb_path, media_type="image/jpeg")
+
     return app
 
 

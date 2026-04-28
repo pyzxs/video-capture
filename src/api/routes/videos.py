@@ -31,7 +31,7 @@ from src.processing.asr import transcribe_by_api
 from src.processing.ffmpeg import get_video_duration, get_video_metadata, extract_audio
 from src.processing.paragraph import merge_into_paragraphs
 from src.processing.subtitle import get_timestamps
-from src.utils import ensure_date_dir
+from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
 
 router = APIRouter(prefix="/videos", tags=["原始视频管理"])
 
@@ -54,8 +54,13 @@ def list_videos(
             query = query.filter(Video.folder_id == folder_id)
     total = query.count()
     items = query.offset(skip).limit(limit).all()
+    items_data = []
+    for i in items:
+        d = VideoOut.model_validate(i).model_dump(mode="json")
+        d["thumbnail"] = thumb_url(d.get("thumbnail", ""))
+        items_data.append(d)
     return response_success(data={
-        "items": [VideoOut.model_validate(i).model_dump(mode="json") for i in items],
+        "items": items_data,
         "total": total,
     })
 
@@ -146,6 +151,13 @@ def upload_video(
     db.add(v)
     db.commit()
     db.refresh(v)
+
+    # 生成缩略图
+    v.thumbnail = generate_thumbnail(filepath)
+    if v.thumbnail:
+        db.commit()
+        db.refresh(v)
+
     content = ""
     if extract_text:
         try:
@@ -208,6 +220,7 @@ async def download_video(data: VideoDownloadRequest, db: Session = Depends(get_d
         frame_height=meta.get("frame_height", 0),
         frame_rate=meta.get("frame_rate", 0.0),
         status="completed",
+        thumbnail=generate_thumbnail(str(filepath)),
         folder_id=data.folder_id,
     )
 
@@ -236,6 +249,7 @@ async def download_video(data: VideoDownloadRequest, db: Session = Depends(get_d
     from src.api.schemas import VideoOut
 
     return response_success(data=VideoOut.model_validate(v).model_dump(mode="json"), message="视频下载成功")
+
 
 
 @router.get("/{video_id}/file")
@@ -455,6 +469,7 @@ def split_cut(video_id: int, data: SplitCutRequest, db: Session = Depends(get_db
             frame_rate=v.frame_rate,
             filename=mat_filename,
             filepath=str(seg_path),
+            thumbnail=generate_thumbnail(str(seg_path)),
         )
         db.add(mat)
         db.flush()
@@ -567,6 +582,7 @@ def split_video(video_id: int, language: str = "zh", db: Session = Depends(get_d
             frame_rate=v.frame_rate,
             filename=seg_path.name,
             filepath=str(seg_path),
+            thumbnail=generate_thumbnail(str(seg_path)),
         )
         db.add(mat)
         db.flush()

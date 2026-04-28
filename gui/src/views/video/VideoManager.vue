@@ -49,14 +49,33 @@
             <span class="status-badge" :class="v.status">{{ v.status === 'completed' ? '已完成' : v.status === 'processing' ? '处理中' : '失败' }}</span>
           </div>
           <div class="card-video">
-            <video
-              :src="`/api/videos/${v.id}/file`"
-              controls
-              preload="metadata"
-              class="video-player-card"
-              @mouseenter="hoverPlay($event)"
-              @mouseleave="hoverPause($event)"
-            ></video>
+            <template v-if="activeVideos.has(v.id)">
+              <video
+                :ref="el => setVideoRef(v.id, el)"
+                :src="`/api/videos/${v.id}/file`"
+                controls
+                preload="auto"
+                class="video-player-card"
+                @mouseenter="hoverPlay($event)"
+                @mouseleave="hoverPause($event)"
+                @loadeddata="onVideoLoaded($event)"
+              ></video>
+            </template>
+            <div v-else class="thumbnail-wrap" @click="activateVideo(v.id)">
+              <img
+                v-if="v.thumbnail"
+                :src="v.thumbnail"
+                class="video-thumbnail"
+                loading="lazy"
+                alt="thumbnail"
+              />
+              <div v-else class="thumbnail-placeholder">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </div>
+              <div class="play-overlay">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </div>
+            </div>
           </div>
           <div class="card-name" :title="v.filename">{{ truncateFilename(v.filename) }}</div>
           <div class="card-meta">

@@ -338,8 +338,7 @@ def concat_videos(
     所有片段需具有相同的编解码参数，否则 ffmpeg 会报错。
     """
     logger.debug("拼接素材: %s", clip_paths)
-    n = len(clip_paths)
-    if n == 0:
+    if len(clip_paths) == 0:
         raise ValueError("No clips to concatenate")
 
     output = Path(output_path).resolve()
@@ -351,16 +350,33 @@ def concat_videos(
 
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    # 过滤不存在或为空的文件，并验证包含有效媒体流
+    valid_paths = []
+    for p in clip_paths:
+        pp = Path(p)
+        if not pp.exists() or pp.stat().st_size == 0:
+            continue
+        try:
+            probe = subprocess.run(
+                [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                 "-of", "csv=p=0", str(p)],
+                capture_output=True, text=True, timeout=10,
+            )
+            if probe.stdout.strip():
+                valid_paths.append(p)
+            else:
+                logger.warning("concat_videos: 跳过无媒体流的文件 %s", p)
+        except Exception:
+            valid_paths.append(p)  # 探测失败时保留，让 ffmpeg 自行判断
+    if not valid_paths:
+        raise FileNotFoundError("所有素材文件均不存在或无效")
+    clip_paths = valid_paths
+    n = len(clip_paths)
+
     if n == 1:
         import shutil
         shutil.copy2(clip_paths[0], str(output))
         return str(output)
-
-    # 过滤不存在的文件
-    valid_paths = [p for p in clip_paths if Path(p).exists()]
-    if not valid_paths:
-        raise FileNotFoundError("所有素材文件均不存在")
-    clip_paths = valid_paths
 
     # 如果包含图片文件，降级为 MoviePy 方式（ffmpeg concat demuxer 无法正确处理图片 DAR）
     if any(p.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif')) for p in clip_paths):
@@ -370,7 +386,7 @@ def concat_videos(
     # 创建临时文件列表（绝对路径）
     print(f"多媒体文本列表{list_path}")
     try:
-        with open(list_path, "w", encoding="utf-8") as f:
+        with open(list_path, "w", encoding="utf-8", newline="\n") as f:
             for p in clip_paths:
                 if p.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
                     # 图片需要指定持续时间，这里设为2秒
@@ -386,7 +402,8 @@ def concat_videos(
             "-safe", "0",
             "-i", str(list_path),
             "-fflags", "+genpts",
-            "-c:v", "libx264",  # 视频编码
+            "-c:v", "libx264",
+            "-c:a", "aac",
             "-pix_fmt", "yuv420p",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1:1",
             str(output)
@@ -394,8 +411,15 @@ def concat_videos(
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             stderr = result.stderr[-1200:] if result.stderr else "(no stderr)"
+            # 读取 concat 列表内容以辅助排查
+            try:
+                concat_content = list_path.read_text(encoding="utf-8")
+            except Exception:
+                concat_content = "(无法读取)"
             raise RuntimeError(
                 f"ffmpeg concat 失败 (exit {result.returncode}):\n"
+                f"input files ({len(clip_paths)}): {clip_paths}\n"
+                f"concat list:\n{concat_content}\n"
                 f"cmd: {' '.join(cmd)}\n"
                 f"{stderr}"
             )

@@ -72,3 +72,33 @@ def get_image_size_imageio(image_path):
     img = iio.imread(image_path)
     height, width = img.shape[:2]
     return width, height
+
+
+def generate_thumbnail(video_path: str) -> str:
+    """从视频第1秒提取一帧作为缩略图，返回缩略图文件路径。失败返回空字符串。"""
+    import hashlib
+    import subprocess
+    from src.config import BASE_DIR
+
+    thumb_dir = Path(BASE_DIR) / "thumbnails"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    file_hash = hashlib.md5(video_path.encode()).hexdigest()
+    thumb_path = thumb_dir / f"{file_hash}.jpg"
+    if thumb_path.exists():
+        return str(thumb_path)
+    try:
+        subprocess.run([
+            f"{BASE_DIR}/bin/ffmpeg", "-ss", "5", "-i", video_path,
+            "-frames:v", "1", "-q:v", "3", "-vf", "scale=320:-1",
+            str(thumb_path), "-y",
+        ], check=True, capture_output=True, timeout=10)
+        return str(thumb_path)
+    except Exception:
+        return ""
+
+
+def thumb_url(filepath: str) -> str:
+    """将缩略图文件路径转为前端可用的 URL。"""
+    if not filepath:
+        return ""
+    return f"/api/thumbnails/{Path(filepath).name}"

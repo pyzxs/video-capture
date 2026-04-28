@@ -56,14 +56,33 @@
           </div>
 
           <div v-if="(m.type === 'video' || m.type === 'scene') && m.filepath" class="card-video">
-            <video
-              :src="`/api/materials/${m.id}/file`"
-              controls
-              preload="metadata"
-              class="material-player"
-              @mouseenter="hoverPlay($event)"
-              @mouseleave="hoverPause($event)"
-            ></video>
+            <template v-if="activeVideos.has(m.id)">
+              <video
+                :ref="el => setVideoRef(m.id, el)"
+                :src="`/api/materials/${m.id}/file`"
+                controls
+                preload="auto"
+                class="material-player"
+                @mouseenter="hoverPlay($event)"
+                @mouseleave="hoverPause($event)"
+                @loadeddata="onVideoLoaded($event)"
+              ></video>
+            </template>
+            <div v-else class="thumbnail-wrap" @click="activateVideo(m.id)">
+              <img
+                v-if="m.thumbnail"
+                :src="m.thumbnail"
+                class="material-thumbnail"
+                loading="lazy"
+                alt="thumbnail"
+              />
+              <div v-else class="thumbnail-placeholder">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </div>
+              <div class="play-overlay">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </div>
+            </div>
           </div>
           <div v-else-if="m.type === 'image' && m.filepath" class="card-image">
             <img :src="`/api/materials/${m.id}/file`" class="material-img" />

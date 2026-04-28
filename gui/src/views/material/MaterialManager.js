@@ -429,6 +429,21 @@ const mdInsertText = (before, after) => {
       }
     }
 
+    // Lazy video loading
+    const activeVideos = ref(new Set())
+    const videoEls = {}
+    const activateVideo = (id) => {
+      const s = new Set(activeVideos.value)
+      s.add(id)
+      activeVideos.value = s
+      setTimeout(() => {
+        const el = videoEls[id]
+        if (el) el.play()
+      }, 100)
+    }
+    const setVideoRef = (id, el) => { if (el) videoEls[id] = el }
+    const onVideoLoaded = (e) => { e.target.play() }
+
     const hoverPlay = (e) => {
       const v = e.target
       if (v.readyState >= 2) v.play()
@@ -466,6 +481,7 @@ const mdInsertText = (before, after) => {
       openCreate, openEdit, closeDialog, saveMaterial, deleteMaterial,
       showDialog, editing, form, selectedFile, dragging, saving, fileInput,
       onFileSelect, onDrop, clearFile, formatSize, truncate,
+      activeVideos, activateVideo, setVideoRef, onVideoLoaded,
       hoverPlay, hoverPause, mdTextarea, showPreview, showEditPreview,
       mdInsert, mdLink, renderMarkdown,
       audioMode, ttsText, ttsVoice, ttsBusy, ttsGenerate,

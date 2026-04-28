@@ -31,6 +31,7 @@ class Video(Base):
     frame_rate = Column(Float, default=0.0)
     content = Column(Text, default="")
     status = Column(String(50), default="completed")  # completed, processing, failed
+    thumbnail = Column(String(1024), default="")
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -50,6 +51,7 @@ class Material(Base):
     frame_rate = Column(Float, default=0.0)
     filename = Column(String(255), default="")
     filepath = Column(String(1024), default="")
+    thumbnail = Column(String(1024), default="")
     status = Column(Integer, default=1)  # 1=有效, 0=缓存
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
 
@@ -72,6 +74,7 @@ class GeneratedVideo(Base):
     status = Column(String(50), nullable=False, default="created")  # created, processing, completed, failed
     error_message = Column(Text, default="")
     material_count = Column(Integer, default=0)
+    thumbnail = Column(String(1024), default="")
     data = Column(Text, default="{}")
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

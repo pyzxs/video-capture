@@ -14,6 +14,7 @@ class VideoOut(BaseModel):
     frame_rate: float
     content: str | None = ""
     status: str = "completed"
+    thumbnail: str = ""
     folder_id: int | None = None
     created_at: datetime
 
@@ -107,6 +108,7 @@ class MaterialBase(BaseModel):
     frame_rate: float = 0.0
     filename: str | None = ""
     filepath: str | None = ""
+    thumbnail: str = ""
     status: int = 1
     folder_id: int | None = None
 
@@ -156,6 +158,7 @@ class GeneratedVideoOut(BaseModel):
     status: str
     error_message: str
     material_count: int
+    thumbnail: str = ""
     data: str = "{}"
     folder_id: int | None = None
     created_at: datetime

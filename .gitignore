@@ -20,4 +20,5 @@ gui/node_modules
 _patch.py
 database
 model
+thumbnails
 bin

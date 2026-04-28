@@ -40,6 +40,43 @@
   object-fit: contain;
   cursor: pointer;
 }
+.thumbnail-wrap {
+  position: relative;
+  width: 100%;
+  height: 180px;
+  cursor: pointer;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.video-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.3);
+}
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.9);
+  transition: background 0.2s, color 0.2s;
+}
+.thumbnail-wrap:hover .play-overlay {
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+}
 .card-meta {
   display: flex;
   flex-wrap: wrap;

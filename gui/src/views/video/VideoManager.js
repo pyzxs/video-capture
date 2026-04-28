@@ -819,6 +819,21 @@ export default {
       return html
     }
 
+    // Lazy video loading — only load the <video> element after user clicks thumbnail
+    const activeVideos = ref(new Set())
+    const videoEls = {}
+    const activateVideo = (id) => {
+      const s = new Set(activeVideos.value)
+      s.add(id)
+      activeVideos.value = s
+      setTimeout(() => {
+        const el = videoEls[id]
+        if (el) el.play()
+      }, 100)
+    }
+    const setVideoRef = (id, el) => { if (el) videoEls[id] = el }
+    const onVideoLoaded = (e) => { e.target.play() }
+
     const hoverPlay = (e) => {
       const v = e.target
       if (v.readyState >= 2) v.play()
@@ -888,6 +903,7 @@ export default {
       showEdit, showEditPreview, editForm, editingVideo, saving, mdTextarea,
       openEdit, closeEdit, saveEdit, saveToNote, startDub, dubbing, mdInsert, mdLink, renderMarkdown,
       copyContent, deleteVideo,
+      activeVideos, activateVideo, setVideoRef, onVideoLoaded,
       hoverPlay, hoverPause,
       showSplit, splitStarted, splitState, splitSteps, splitDoing, splitDoingText, splitError,
       splitMaterials, splitVideoRef, openSplit, startSplitAnalysis, closeSplit, deleteSplitMaterial,

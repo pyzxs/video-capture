@@ -51,15 +51,35 @@
               <span class="status-badge" :class="g.status">{{ statusText(g.status) }}</span>
             </div>
             <div class="card-video">
-              <video
-                v-if="g.output_filepath"
-                :src="`/api/generated/${g.id}/download`"
-                controls
-                preload="metadata"
-                class="video-player-card"
-                @mouseenter="hoverPlay($event)"
-                @mouseleave="hoverPause($event)"
-              ></video>
+              <template v-if="g.output_filepath">
+                <template v-if="activeVideos.has(g.id)">
+                  <video
+                    :ref="el => setVideoRef(g.id, el)"
+                    :src="`/api/generated/${g.id}/download`"
+                    controls
+                    preload="auto"
+                    class="video-player-card"
+                    @mouseenter="hoverPlay($event)"
+                    @mouseleave="hoverPause($event)"
+                    @loadeddata="onVideoLoaded($event)"
+                  ></video>
+                </template>
+                <div v-else class="thumbnail-wrap" @click="activateVideo(g.id)">
+                  <img
+                    v-if="g.thumbnail"
+                    :src="g.thumbnail"
+                    class="video-thumbnail"
+                    loading="lazy"
+                    alt="thumbnail"
+                  />
+                  <div v-else class="thumbnail-placeholder">
+                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  </div>
+                  <div class="play-overlay">
+                    <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  </div>
+                </div>
+              </template>
               <div v-else class="card-video-placeholder">
                 <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 <span>尚未生成</span>
