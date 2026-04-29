@@ -229,6 +229,27 @@ def update_material(material_id: int, data: MaterialUpdate, db: Session = Depend
         setattr(m, k, v)
     db.commit()
     db.refresh(m)
+
+    # 更新向量数据库
+    try:
+        _get_vector_store().delete_material(material_id)
+    except Exception:
+        pass
+    if m.content:
+        try:
+            _get_vector_store().add_material(m.id, m.content, {
+                "type": m.type,
+                "start_time": m.start_time,
+                "end_time": m.end_time,
+                "frame_width": m.frame_width,
+                "frame_height": m.frame_height,
+                "frame_rate": m.frame_rate,
+                "filename": m.filename or "",
+                "filepath": m.filepath or "",
+            })
+        except Exception:
+            pass
+
     return m
 
 

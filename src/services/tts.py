@@ -14,7 +14,7 @@ ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
 
 def synthesize(text: str, output_path: str | None = None,
                voice: str | None = None) -> str:
-    """使用硅基流动 API 将文本合成为语音文件。
+    """通过 CMS 代理调用 TTS 将文本合成为语音文件。
 
     参数：
         text: 要合成的文本。
@@ -23,19 +23,19 @@ def synthesize(text: str, output_path: str | None = None,
 
     返回输出音频文件路径。
     """
-    if not get_config("tts_api_key"):
-        raise RuntimeError("未配置 TTS_API_KEY")
+    from src.auth import get_auth_headers, update_local_quota
+
+    if not get_config("api_key"):
+        raise RuntimeError("未注册 CMS 用户，无法使用 TTS")
 
     if output_path is None:
         filename = hashlib.md5(text.encode('utf-8')).hexdigest()
         output_path = str(ensure_date_dir(get_config("mixed_dir"), f"{filename}.mp3"))
 
     voice = voice or get_config("tts_voice")
+    cms_url = get_config("cms_base_url")
 
-    headers = {
-        "Authorization": f"Bearer {get_config('tts_api_key')}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json", **get_auth_headers()}
     payload = {
         "model": get_config("tts_model"),
         "input": text,
@@ -43,16 +43,23 @@ def synthesize(text: str, output_path: str | None = None,
         "response_format": "mp3",
     }
 
-    resp = requests.post(get_config("tts_api_base_url"), json=payload, headers=headers, stream=True)
-    if resp.status_code != 200:
+    resp = requests.post(
+        f"{cms_url}/api/proxy/tts",
+        json=payload, headers=headers, timeout=60,
+    )
+    if resp.status_code == 402:
+        raise RuntimeError("CMS 额度不足，请充值")
+    if resp.status_code >= 400:
         raise RuntimeError(
-            f"TTS API 请求失败 (HTTP {resp.status_code}): {resp.text[:500]}"
+            f"TTS 代理请求失败 (HTTP {resp.status_code}): {resp.text[:500]}"
         )
 
+    remaining = resp.headers.get("X-Quota-Remaining")
+    if remaining:
+        update_local_quota(float(remaining))
+
     with open(output_path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+        f.write(resp.content)
 
     return output_path
 

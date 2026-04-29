@@ -265,19 +265,20 @@
                 <span class="meta-item"><span class="meta-lbl">帧率</span> {{ editingVideo?.frame_rate ?? '-' }}fps</span>
                 <span class="meta-item"><span class="meta-lbl">时长</span> {{ formatDuration(editingVideo?.duration) }}</span>
               </div>
-              <label>
+              <div class="form-group">
                 <div class="label-row">
-                  <span>文案</span>
+                  <label for="mdTextarea" class="inline-label">文案</label>
                   <div class="label-row-actions">
-                    <button class="agent-btn" @click="saveToNote" title="保存到笔记">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <button type="button" class="agent-btn" @click="saveToNote" :disabled="savingToNote" title="保存到笔记">
+                      <svg v-if="!savingToNote" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
                         <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
                         <line x1="8" y1="7" x2="16" y2="7"/>
                         <line x1="8" y1="11" x2="14" y2="11"/>
                       </svg>
+                      <span v-else class="saving-spinner"></span>
                     </button>
-                    <button class="agent-btn" @click="toggleChat" :title="showChat ? '关闭 AI 助手' : 'AI 改写文案'">
+                    <button type="button" class="agent-btn" @click="toggleChat" :title="showChat ? '关闭 AI 助手' : 'AI 改写文案'">
                       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -298,10 +299,10 @@
                       {{ showEditPreview ? '编辑' : '预览' }}
                     </button>
                   </div>
-                  <textarea v-if="!showEditPreview" ref="mdTextarea" v-model="editForm.content" rows="12" class="md-textarea" placeholder="输入 Markdown 文案..."></textarea>
+                  <textarea v-if="!showEditPreview" id="mdTextarea" ref="mdTextarea" v-model="editForm.content" rows="12" class="md-textarea" placeholder="输入 Markdown 文案..."></textarea>
                   <div v-else class="md-preview" v-html="renderMarkdown(editForm.content)"></div>
                 </div>
-              </label>
+              </div>
             </div>
           </div>
 

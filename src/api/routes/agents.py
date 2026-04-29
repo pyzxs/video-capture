@@ -64,33 +64,46 @@ def _llm_model():
     return model
 
 
-def _get_llm_config():
-    """从系统配置读取大模型信息。"""
-    return {
-        "model": _llm_model(),
-        "api_key": get_config("llm_api_key"),
-        "api_base": get_config("llm_base_url"),
-    }
-
 
 def _call_llm(agent: Agent, req: AgentChatRequest) -> str:
-    """调用系统配置的大模型。"""
-    from litellm import completion
+    """通过 CMS 代理调用大模型。"""
+    import requests
+    from src.auth import get_auth_headers, update_local_quota
 
-    cfg = _get_llm_config()
+    cms_url = get_config("cms_base_url")
+    api_key = get_config("api_key")
+    if not api_key:
+        raise HTTPException(502, "未注册 CMS 用户，无法调用大模型")
+
+    model = _llm_model()
     messages = [{"role": "system", "content": req.prompt or agent.prompt}]
     messages.extend(req.messages)
 
     try:
-        response = completion(
-            model=cfg["model"],
-            messages=messages,
-            api_key=cfg["api_key"] or None,
-            api_base=cfg["api_base"] or None,
-            max_tokens=req.max_tokens,
+        headers = {"Content-Type": "application/json", **get_auth_headers()}
+        body = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": req.max_tokens,
+        }
+        resp = requests.post(
+            f"{cms_url}/api/proxy/llm",
+            json=body, headers=headers, timeout=120,
         )
-        return response.choices[0].message.content or ""
-    except Exception as e:
+        if resp.status_code == 402:
+            raise HTTPException(402, "CMS 额度不足，请充值")
+        if resp.status_code >= 400:
+            logger.error("CMS LLM 代理错误 (HTTP %s): %s", resp.status_code, resp.text[:200])
+            raise HTTPException(502, f"大模型调用失败: {resp.text[:200]}")
+
+        data = resp.json()
+        llm_response = data.get("data", {})
+        text = llm_response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        remaining = llm_response.get("x_quota_remaining")
+        if remaining is not None:
+            update_local_quota(remaining)
+        return text or ""
+    except requests.RequestException as e:
         logger.error("LLM 调用失败: %s", e)
         raise HTTPException(502, f"大模型调用失败: {e}")
 

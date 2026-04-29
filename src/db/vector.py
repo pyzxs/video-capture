@@ -7,37 +7,46 @@ from src.config import get_config
 
 
 class SiliconFlowEmbeddingFunction(EmbeddingFunction):
-    """基于硅基流动 API 的 ChromaDB 嵌入函数。"""
+    """通过 CMS 代理的 ChromaDB 嵌入函数。"""
 
     def __init__(self, api_key: str, model: str, url: str):
         self._api_key = api_key
         self._model = model
-        self._url = url
+        self._proxy_url = url  # CMS proxy URL
         self._session = requests.Session()
         self._session.headers.update({
-            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         })
 
     def __call__(self, input: list[str]) -> list[list[float]]:
+        headers = dict(self._session.headers)
+        api_key = self._api_key
+        if api_key:
+            headers["X-Api-Key"] = api_key
+
         response = self._session.post(
-            self._url,
+            self._proxy_url,
             json={"model": self._model, "input": input},
+            headers=headers,
         )
+        if response.status_code == 402:
+            raise RuntimeError("CMS 额度不足，请充值")
         response.raise_for_status()
-        data = response.json()
-        data["data"].sort(key=lambda x: x["index"])
-        return [d["embedding"] for d in data["data"]]
+        result = response.json()
+        emb_data = result.get("data", result)
+        emb_data["data"].sort(key=lambda x: x["index"])
+        return [d["embedding"] for d in emb_data["data"]]
 
 
 class VectorStore:
-    """ChromaDB 封装的素材向量存储与搜索。"""
+    """ChromaDB 封装的素材向量存储与搜索。通过 CMS 代理调用 Embedding API。"""
 
     def __init__(self):
+        cms_url = get_config("cms_base_url")
         embed_fn = SiliconFlowEmbeddingFunction(
-            api_key=get_config("embedding_api_key"),
+            api_key=get_config("api_key"),
             model=get_config("embedding_model"),
-            url=get_config("embedding_api_base_url"),
+            url=f"{cms_url}/api/proxy/embedding",
         )
         self.client = chromadb.PersistentClient(
             path=str(get_config("vector_db_path")),

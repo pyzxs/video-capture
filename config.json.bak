@@ -16,7 +16,7 @@
   "subtitle_crop_bottom": "0",
   "log_level": "INFO",
   "log_dir": "logs",
-  "cms_base_url": "https://video-capture.weigou365.cn",
+  "cms_base_url": "https://video-capture.weigou365.cn/api",
   "user_id": "ba86761f2e066aa392c81e14347cc841",
-  "api_key": "sk-500d4cc656dca8b8db0cfcc178ae985adf7d7d50ae28bd8c"
+  "api_key": ""
 }

@@ -13,18 +13,32 @@ logger = get_logger("api.settings")
 router = APIRouter(prefix="/settings", tags=["系统配置"])
 
 
+# 有效的配置键（与 config.py _DEFAULTS 保持一致）
+_VALID_KEYS = {
+    "llm_model", "llm_provider", "asr_model_size", "asr_api_model",
+    "whisper_model_dir", "vector_db_path", "embedding_model",
+    "tts_model", "tts_voice", "source_dir", "material_dir", "mixed_dir",
+    "thumbnail_dir", "paragraph_gap_threshold", "subtitle_crop_bottom",
+    "log_level", "log_dir", "cms_base_url", "user_id", "api_key",
+}
+
+
 def _sync_config(db: Session):
-    """将 DB 中所有配置写入 config.json。"""
+    """将 DB 中有效配置写入 config.json，清理废弃配置项。"""
     items = db.query(Setting).all()
-    data = {s.key: s.value for s in items if s.is_active}
+    stale_ids = [s.id for s in items if s.key not in _VALID_KEYS]
+    if stale_ids:
+        db.query(Setting).filter(Setting.id.in_(stale_ids)).delete(synchronize_session=False)
+        db.commit()
+    data = {s.key: s.value for s in items if s.is_active and s.key in _VALID_KEYS}
     save_config(data)
 
 
 @router.get("")
 def list_settings(group: str | None = None, db: Session = Depends(get_db)):
-    """获取所有配置项，可按分组筛选。"""
+    """获取所有配置项，可按分组筛选。is_hidden=1 的项不返回。"""
     init_db()
-    query = db.query(Setting).order_by(Setting.group, Setting.key)
+    query = db.query(Setting).filter(Setting.is_hidden == 0).order_by(Setting.group, Setting.key)
     if group:
         query = query.filter(Setting.group == group)
     items = query.all()

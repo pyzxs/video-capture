@@ -1,7 +1,7 @@
 <template>
   <header class="app-header">
     <div class="header-logo">
-      <div class="logo-circle">
+      <div class="logo-circle" @click="showProfile = true" title="用户信息">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
           <circle cx="12" cy="7" r="4"/>
@@ -102,26 +102,29 @@
     <ToastMessage />
     <ConfirmDialog />
     <PromptDialog />
+    <ProfilePanel :visible="showProfile" @close="showProfile = false" />
   </div>
 </template>
 
 <script>
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ToastMessage from './components/ToastMessage.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import PromptDialog from './components/PromptDialog.vue'
+import ProfilePanel from './views/profile/ProfilePanel.vue'
 import { useFolders } from './composables/useFolders.js'
 import { useToast } from './composables/useToast.js'
 import { folderApi } from './api/index.js'
 
 export default {
   name: 'App',
-  components: { ToastMessage, ConfirmDialog, PromptDialog },
+  components: { ToastMessage, ConfirmDialog, PromptDialog, ProfilePanel },
   setup() {
     const route = useRoute()
     const toast = useToast()
     const { folders, selectedFolderId, loadFolders } = useFolders()
+    const showProfile = ref(false)
 
     const folderRoutes = ['Videos', 'Materials', 'Mashups']
     const showSubSidebar = computed(() => folderRoutes.includes(route.name))
@@ -187,6 +190,7 @@ export default {
 
     return {
       showSubSidebar,
+      showProfile,
       folders,
       selectedFolderId,
       folderCount,
@@ -251,6 +255,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.header-logo .logo-circle:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.25);
 }
 .header-title {
   font-size: 14px;

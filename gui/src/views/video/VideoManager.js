@@ -211,6 +211,7 @@ export default {
     const editForm = ref({ filename: '', content: '' })
     const editingVideo = ref(null)
     const saving = ref(false)
+    const savingToNote = ref(false)
     const mdTextarea = ref(null)
 
     // AI rewrite chat
@@ -649,6 +650,7 @@ export default {
 
 
     const saveToNote = async () => {
+      if (savingToNote.value) return
       const v = editingVideo.value
       if (!v) return
       if (!v.content) {
@@ -656,11 +658,14 @@ export default {
         return
       }
       if (!await toast.confirm('确定将文案保存到笔记？将经由笔记智能体排版后存入默认笔记文件夹。')) return
+      savingToNote.value = true
       try {
         await videoApi.saveToNote(v.id)
         toast.success('已保存到笔记')
       } catch (e) {
         toast.error('保存失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
+      } finally {
+        savingToNote.value = false
       }
     }
 
@@ -901,7 +906,7 @@ export default {
       showDownload, downloadChannel, downloadUrls, downloadProxy, downloadExtract, downloading, downloadResults, channels,
       openDownload, closeDownload, startDownload,
       showEdit, showEditPreview, editForm, editingVideo, saving, mdTextarea,
-      openEdit, closeEdit, saveEdit, saveToNote, startDub, dubbing, mdInsert, mdLink, renderMarkdown,
+      openEdit, closeEdit, saveEdit, saveToNote, savingToNote, startDub, dubbing, mdInsert, mdLink, renderMarkdown,
       copyContent, deleteVideo,
       activeVideos, activateVideo, setVideoRef, onVideoLoaded,
       hoverPlay, hoverPause,

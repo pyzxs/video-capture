@@ -7,6 +7,7 @@ from src.api.routes.agents import router as agents_router
 from src.api.routes.folders import router as folders_router
 from src.api.routes.settings import router as settings_router
 from src.api.routes.notes import router as notes_router
+from src.api.routes.profile import router as profile_router
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(videos_router)
@@ -16,3 +17,4 @@ api_router.include_router(folders_router)
 api_router.include_router(settings_router)
 api_router.include_router(agents_router)
 api_router.include_router(notes_router)
+api_router.include_router(profile_router)

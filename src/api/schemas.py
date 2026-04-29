@@ -235,6 +235,7 @@ class SettingOut(BaseModel):
     group: str
     description: str
     is_active: int = 1
+    is_hidden: int = 0
 
     model_config = {"from_attributes": True}
 

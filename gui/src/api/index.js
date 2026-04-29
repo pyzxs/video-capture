@@ -122,3 +122,9 @@ export const noteApi = {
     return api.post('/notes/upload-image', fd)
   },
 }
+
+// ── Profile ──
+export const profileApi = {
+  get: () => api.get('/profile'),
+  records: (page = 1, pageSize = 20) => api.get('/profile/records', { params: { page, page_size: pageSize } }),
+}

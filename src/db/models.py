@@ -118,5 +118,6 @@ class Setting(Base):
     group = Column(String(100), default="general")
     description = Column(String(500), default="")
     is_active = Column(Integer, default=1)
+    is_hidden = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -78,9 +78,9 @@ def generate_thumbnail(video_path: str) -> str:
     """从视频第1秒提取一帧作为缩略图，返回缩略图文件路径。失败返回空字符串。"""
     import hashlib
     import subprocess
-    from src.config import BASE_DIR
+    from src.config import BASE_DIR, get_config
 
-    thumb_dir = Path(BASE_DIR) / "thumbnails"
+    thumb_dir = get_config("thumbnail_dir")
     thumb_dir.mkdir(parents=True, exist_ok=True)
     file_hash = hashlib.md5(video_path.encode()).hexdigest()
     thumb_path = thumb_dir / f"{file_hash}.jpg"

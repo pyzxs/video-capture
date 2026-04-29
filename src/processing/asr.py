@@ -1,3 +1,4 @@
+"""ASR 语音转文本：本地 Whisper + CMS 代理双模式。"""
 import os
 from pathlib import Path
 
@@ -41,32 +42,38 @@ def transcribe(audio_path: str, language: str = "zh") -> list[dict]:
 
 
 def transcribe_by_api(audio_path: str, language="zh") -> str:
-    """通过ASR大模型语音转文本"""
+    """通过 CMS 代理调用 ASR 大模型语音转文本"""
+    from src.auth import get_auth_headers
 
-    api_key = get_config('asr_api_key')
+    api_key = get_config("api_key")
+    if not api_key:
+        print("未注册 CMS 用户，无法使用 ASR API")
+        return ""
+
     api_model = get_config("asr_api_model")
+    cms_url = get_config("cms_base_url")
+    url = f"{cms_url}/api/proxy/asr"
 
-    url = get_config("asr_api_base_url")
-
-    headers = {
-        "Authorization": f"Bearer {api_key}"
-    }
-
-    # 使用 files 参数上传文件，model 参数作为表单字段
-    files = {
-        "file": open(audio_path, "rb"),  # 以二进制方式打开文件
-        "model": (None, api_model)  # (filename, value) 传普通字段
-    }
+    headers = get_auth_headers()
 
     try:
-        response = requests.post(url, headers=headers, files=files)
-        response.raise_for_status()  # 如果状态码不是 2xx，抛出异常
+        with open(audio_path, "rb") as f:
+            files = {
+                "file": (os.path.basename(audio_path), f, "audio/wav"),
+            }
+            data = {"model": api_model}
+            response = requests.post(url, headers=headers, files=files, data=data, timeout=120)
+
+        if response.status_code == 402:
+            print("CMS 额度不足，请充值")
+            return ""
+        response.raise_for_status()
         result = response.json()
-        print("转录结果：", result.get("text","")[:100])
-        return result.get("text", "")
+        asr_data = result.get("data", {})
+        text = asr_data.get("text", "")
+        print("转录结果：", text[:100])
+        return text
     except Exception as e:
         print("请求失败：", e)
-    finally:
-        files["file"].close()  # 确保关闭文件句柄
 
     return ""

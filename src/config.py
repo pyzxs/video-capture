@@ -8,31 +8,26 @@ _CONFIG_PATH = Path("config.json")
 
 # ── 默认值 ──
 _DEFAULTS = {
-    "llm_api_key": "",
-    "llm_base_url": "",
     "llm_model": "deepseek-chat",
-    "llm_provider": "openai",
+    "llm_provider": "deepseek",
     "asr_model_size": "base",
-    "asr_api_base_url": "https://api.siliconflow.cn/v1/audio/transcriptions",
-    "asr_api_key": "",
     "asr_api_model": "FunAudioLLM/SenseVoiceSmall",
     "whisper_model_dir": "model/whisper",
     "vector_db_path": "database/chroma_db",
     "embedding_model": "BAAI/bge-m3",
-    "embedding_device": "cpu",
-    "embedding_api_key": "",
-    "embedding_api_base_url": "https://api.siliconflow.cn/v1/embeddings",
-    "tts_api_key": "",
-    "tts_api_base_url": "https://api.siliconflow.cn/v1/audio/speech",
     "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
     "tts_voice": "FunAudioLLM/CosyVoice2-0.5B:anna",
     "source_dir": "videos/source",
     "material_dir": "videos/material",
     "mixed_dir": "videos/mixed",
+    "thumbnail_dir": "thumbnails",
     "paragraph_gap_threshold": 2.0,
     "subtitle_crop_bottom": 0,
     "log_level": "INFO",
     "log_dir": "logs",
+    "cms_base_url": "http://localhost:8091",
+    "user_id": "",
+    "api_key": "",
 }
 
 # ── JSON key → Python type ──
@@ -42,6 +37,7 @@ _TYPE_MAP = {
     "mixed_dir": Path,
     "whisper_model_dir": Path,
     "paragraph_gap_threshold": float,
+    "thumbnail_dir": Path,
     "subtitle_crop_bottom": int,
     "log_dir": str,
 }

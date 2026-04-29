@@ -34,12 +34,13 @@ def get_agent_by_key(key: str) -> dict | None:
 
 
 def call_agent(agent_key: str, user_message: str, max_tokens: int = 2000) -> str:
-    """调用指定 key 的智能体，使用系统配置的大模型，返回响应文本。
+    """调用指定 key 的智能体，通过 CMS 代理转发到大模型，返回响应文本。
 
-    流程：查询 agent → 获取系统 LLM 配置 → 通过 litellm 调用。
-    若智能体不存在或 LLM 未配置则返回 user_message 原文。
+    流程：查询 agent → 通过 CMS 代理调用 → 解析响应。
+    若智能体不存在或 CMS 未配置则返回 user_message 原文。
     """
-    from litellm import completion
+    import requests
+    from src.auth import get_auth_headers, update_local_quota
 
     cfg = get_agent_by_key(agent_key)
     if not cfg:
@@ -47,23 +48,40 @@ def call_agent(agent_key: str, user_message: str, max_tokens: int = 2000) -> str
         return user_message
 
     agent = cfg["agent"]
-    api_key = get_config("llm_api_key")
+    cms_url = get_config("cms_base_url")
+    api_key = get_config("api_key")
     if not api_key:
-        logger.warning("系统未配置 llm_api_key，返回原文")
+        logger.warning("未注册 CMS 用户，返回原文")
         return user_message
 
     try:
-        response = completion(
-            model=_llm_model(),
-            messages=[
+        headers = {"Content-Type": "application/json", **get_auth_headers()}
+        body = {
+            "model": _llm_model(),
+            "messages": [
                 {"role": "system", "content": agent.prompt},
                 {"role": "user", "content": user_message},
             ],
-            api_key=api_key,
-            api_base=get_config("llm_base_url") or None,
-            max_tokens=max_tokens,
+            "max_tokens": max_tokens,
+        }
+        resp = requests.post(
+            f"{cms_url}/api/proxy/llm",
+            json=body, headers=headers, timeout=120,
         )
-        return response.choices[0].message.content.strip()
+        if resp.status_code == 402:
+            logger.error("CMS 额度不足，请充值")
+            return user_message
+        if resp.status_code >= 400:
+            logger.error("CMS LLM 代理错误 (HTTP %s): %s", resp.status_code, resp.text[:200])
+            return user_message
+
+        data = resp.json()
+        llm_response = data.get("data", {})
+        text = llm_response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        remaining = llm_response.get("x_quota_remaining")
+        if remaining is not None:
+            update_local_quota(remaining)
+        return text or user_message
     except Exception as e:
         logger.error("智能体 %s 调用失败: %s", agent_key, e)
         return user_message
