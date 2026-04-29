@@ -19,6 +19,7 @@ dependencies = [
     "yt-dlp>=2026.3.17",
     "imageio>=2.37.3",
     "moviepy>=2.2.1",
+    "cryptography>=47.0.0",
 ]
 
 [project.optional-dependencies]

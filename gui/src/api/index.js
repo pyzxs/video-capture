@@ -127,4 +127,5 @@ export const noteApi = {
 export const profileApi = {
   get: () => api.get('/profile'),
   records: (page = 1, pageSize = 20) => api.get('/profile/records', { params: { page, page_size: pageSize } }),
+  recharge: (code) => api.post('/profile/recharge', { code }),
 }

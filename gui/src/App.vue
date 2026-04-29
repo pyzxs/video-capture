@@ -1,10 +1,9 @@
 <template>
   <header class="app-header">
     <div class="header-logo">
-      <div class="logo-circle" @click="showProfile = true" title="用户信息">
+      <div class="logo-circle">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-          <circle cx="12" cy="7" r="4"/>
+          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
         </svg>
       </div>
       <span class="header-title">AI Video Capture</span>
@@ -26,7 +25,7 @@
       <nav>
         <router-link to="/videos" class="nav-item" active-class="active" title="原始视频管理">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9l5 3-5 3V9z"/>
           </svg>
           <span>原始视频管理</span>
         </router-link>
@@ -54,13 +53,19 @@
           </svg>
           <span>智能体管理</span>
         </router-link>
-      </nav>
-      <div class="sidebar-bottom">
         <router-link to="/settings" class="nav-item" active-class="active" title="系统配置">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
           <span>系统配置</span>
+        </router-link>
+      </nav>
+      <div class="sidebar-bottom">
+        <router-link to="/profile" class="nav-item" active-class="active" title="用户信息">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span>用户信息</span>
         </router-link>
       </div>
     </aside>
@@ -102,29 +107,26 @@
     <ToastMessage />
     <ConfirmDialog />
     <PromptDialog />
-    <ProfilePanel :visible="showProfile" @close="showProfile = false" />
   </div>
 </template>
 
 <script>
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ToastMessage from './components/ToastMessage.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import PromptDialog from './components/PromptDialog.vue'
-import ProfilePanel from './views/profile/ProfilePanel.vue'
 import { useFolders } from './composables/useFolders.js'
 import { useToast } from './composables/useToast.js'
 import { folderApi } from './api/index.js'
 
 export default {
   name: 'App',
-  components: { ToastMessage, ConfirmDialog, PromptDialog, ProfilePanel },
+  components: { ToastMessage, ConfirmDialog, PromptDialog },
   setup() {
     const route = useRoute()
     const toast = useToast()
     const { folders, selectedFolderId, loadFolders } = useFolders()
-    const showProfile = ref(false)
 
     const folderRoutes = ['Videos', 'Materials', 'Mashups']
     const showSubSidebar = computed(() => folderRoutes.includes(route.name))
@@ -190,7 +192,6 @@ export default {
 
     return {
       showSubSidebar,
-      showProfile,
       folders,
       selectedFolderId,
       folderCount,
@@ -255,13 +256,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.header-logo .logo-circle:hover {
-  transform: scale(1.1);
-  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.25);
 }
 .header-title {
   font-size: 14px;

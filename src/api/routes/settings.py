@@ -24,7 +24,7 @@ _VALID_KEYS = {
 
 
 def _sync_config(db: Session):
-    """将 DB 中有效配置写入 config.json，清理废弃配置项。"""
+    """将 DB 中有效配置写入 config.enc，清理废弃配置项。"""
     items = db.query(Setting).all()
     stale_ids = [s.id for s in items if s.key not in _VALID_KEYS]
     if stale_ids:

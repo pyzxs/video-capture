@@ -37,7 +37,7 @@
               </template>
               <template v-else>
               <!-- 目录选择 -->
-              <div v-if="s.key === 'source_dir' || s.key === 'material_dir' || s.key === 'mixed_dir' || s.key === 'vector_db_path' || s.key === 'log_dir'" class="dir-input-wrap">
+              <div v-if="s.key === 'source_dir' || s.key === 'material_dir' || s.key === 'mixed_dir' || s.key === 'thumbnail_dir' || s.key === 'vector_db_path' || s.key === 'log_dir'" class="dir-input-wrap">
                 <input
                   v-model="editMap[s.id]"
                   type="text"

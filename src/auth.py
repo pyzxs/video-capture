@@ -75,7 +75,7 @@ def get_or_register() -> bool:
     """Ensure the user has valid credentials. Returns True if ready.
 
     On first launch: generate machine_id, call CMS /api/register,
-    persist user_id/api_key to config.json.
+    persist user_id/api_key to config.enc.
     On subsequent launches: verify credentials exist.
     """
     api_key = get_config("api_key")
