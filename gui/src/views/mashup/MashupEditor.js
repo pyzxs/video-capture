@@ -145,6 +145,19 @@ export default {
       return line && !line.main
     })
 
+    const canDeleteSelected = computed(() => {
+      if (selectedClip.value) return true
+      if (selectLine.value >= 0 && selectGroupIndex.value >= 0 && selectIndex.value < 0) {
+        const line = trackLines.value[selectLine.value]
+        return line && line.type === 'group' && line.groups && line.groups[selectGroupIndex.value]
+      }
+      return false
+    })
+
+    const hasGroupTracks = computed(() => {
+      return trackLines.value.some(l => l.type === 'group' && l.groups && l.groups.length > 0)
+    })
+
     // Clip at playhead position (for playback preview)
     const playheadClip = computed(() => {
       const f = playStartFrame.value
@@ -1206,6 +1219,30 @@ export default {
     }
 
     const deleteSelected = () => {
+      // Delete group card
+      if (selectLine.value >= 0 && selectGroupIndex.value >= 0 && selectIndex.value < 0) {
+        const line = trackLines.value[selectLine.value]
+        if (!line || line.locked || line.type !== 'group' || !line.groups) return
+        const g = line.groups[selectGroupIndex.value]
+        if (!g) return
+        // Remove all clips belonging to this group from the track list
+        const ids = new Set([...(g.groupVideos || []), ...(g.groupAudios || [])])
+        for (let i = line.list.length - 1; i >= 0; i--) {
+          if (ids.has(line.list[i].id)) line.list.splice(i, 1)
+        }
+        // Remove the group
+        line.groups.splice(selectGroupIndex.value, 1)
+        // If no groups left, remove the entire group track
+        if (line.groups.length === 0) {
+          trackLines.value.splice(selectLine.value, 1)
+        }
+        selectGroupIndex.value = -1
+        selectIndex.value = -1
+        updateTotalFrames()
+        return
+      }
+
+      // Delete clip
       if (selectLine.value < 0 || selectIndex.value < 0) return
       const line = trackLines.value[selectLine.value]
       if (!line || line.locked) return
@@ -1341,6 +1378,8 @@ export default {
       // Find or create group track
       let gt = trackLines.value.find(l => l.type === 'group')
       if (!gt) {
+        // Remove all other tracks; only the group track remains
+        trackLines.value = trackLines.value.filter(l => l.main)
         gt = makeTrack('group')
         gt.groups = []
         gt.subLanes = { video: { visible: true, locked: false, muted: false }, audio: { visible: true, locked: false, muted: false } }
@@ -1483,10 +1522,14 @@ export default {
         const sourceClip = sourceLine.list[dragData._sourceIndex]
         if (!sourceClip || !sourceClip.material_id) { dragData = null; return }
         try {
+          const ol = dragData.offsetL || 0
+          const or = dragData.offsetR || 0
+          const srcStart = ol
+          const srcEnd = ol + (dragData.end - dragData.start) - or
           const res = await materialApi.createFromSegment(
             sourceClip.material_id,
-            sourceClip.start,
-            sourceClip.end
+            srcStart,
+            srcEnd
           )
           const newMat = res.data
           addToGroupVideos(newMat)
@@ -1588,10 +1631,14 @@ export default {
         const sourceClip = sourceLine.list[dragData._sourceIndex]
         if (!sourceClip || !sourceClip.material_id) { dragData = null; return }
         try {
+          const ol = dragData.offsetL || 0
+          const or = dragData.offsetR || 0
+          const srcStart = ol
+          const srcEnd = ol + (dragData.end - dragData.start) - or
           const res = await materialApi.createFromSegment(
             sourceClip.material_id,
-            sourceClip.start,
-            sourceClip.end
+            srcStart,
+            srcEnd
           )
           const newMat = res.data
           addToGroupVideos(newMat)
@@ -1716,6 +1763,8 @@ export default {
         material_id: clip.material_id,
         start: clip.start,
         end: clip.end,
+        offsetL: clip.offsetL || 0,
+        offsetR: clip.offsetR || 0,
       }
       ev.dataTransfer.effectAllowed = 'move'
       ev.dataTransfer.setData('text/plain', clip.id)
@@ -2302,7 +2351,7 @@ export default {
       playerZoom, playerRatioIndex, ratioOptions, zoomOptions, currentRatio,
       getClipStyle, playheadLeft, trackHeightClass, trackTypeName,
       trackIconComp, typeLabel,
-      addToTimeline, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, splitClip,
+      addToTimeline, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, canDeleteSelected, hasGroupTracks, splitClip,
       hasAudioTracks: canExtractSubtitles, extractingSubtitles, extractSubtitles, addGroupToTrack,
       groupTrack, selectGroupIndex, currentGroup, getGroupCardStyle,
       addToGroupVideos, addToGroupAudios, removeFromGroupList,

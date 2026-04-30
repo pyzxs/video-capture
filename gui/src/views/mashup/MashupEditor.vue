@@ -504,7 +504,7 @@
               <button class="tb-btn" @click="addGroupToTrack" title="添加素材组（视频+配音）到新轨道">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><line x1="12" y1="11" x2="12" y2="13"/></svg>
               </button>
-              <button class="tb-btn" @click="deleteSelected" :disabled="!selectedClip" title="删除">
+              <button class="tb-btn" @click="deleteSelected" :disabled="!canDeleteSelected" title="删除">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
               <button class="tb-btn" @click="deleteTrack" :disabled="!canDeleteTrack" title="删除轨道">
@@ -629,7 +629,7 @@
                     <div v-else v-for="(clip, ci) in line.list" :key="clip.id" class="track-clip"
                       :class="{ 'is-selected': selectLine === li && selectIndex === ci, 'is-dragging': dragClipId === clip.id }"
                       :style="getClipStyle(clip)"
-                      draggable="true"
+                      :draggable="hasGroupTracks"
                       @dragstart.stop="onClipDragStart($event, li, ci)"
                       @click.stop="selectClip(li, ci)"
                       @mousedown.stop="onClipMouseDown($event, li, ci)">

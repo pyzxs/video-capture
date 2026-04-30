@@ -371,6 +371,8 @@ def delete_generated(gen_id: int, db: Session = Depends(get_db)):
     gen = db.query(GeneratedVideo).get(gen_id)
     if not gen:
         raise HTTPException(404, "混剪视频不存在")
+    if gen.output_filepath and Path(gen.output_filepath).exists():
+        Path(gen.output_filepath).unlink(missing_ok=True)
     db.delete(gen)
     db.commit()
     return {"ok": True}
@@ -578,12 +580,14 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
                 continue
 
             # --- 计算时间裁剪 ---
+            # start/end are timeline positions; offset_l is the source offset in frames
             start_frame = clip.get("start", 0) or 0
             end_frame = clip.get("end", 0) or 0
             offset_l = clip.get("offsetL", 0) or 0
             offset_r = clip.get("offsetR", 0) or 0
-            adj_start = max(start_frame + offset_l, 0)
-            adj_end = max(end_frame - offset_r, adj_start + 1)
+            clip_dur = end_frame - start_frame
+            adj_start = max(offset_l, 0)
+            adj_end = max(offset_l + clip_dur - offset_r, adj_start + 1)
             start_sec = adj_start / fps
             dur_sec = (adj_end - adj_start) / fps
 
@@ -920,12 +924,14 @@ def _make_segment(clip: dict, fp: str, fps: int, gen_id: int, temp_dir: str) -> 
     import subprocess, uuid
     from src.processing.ffmpeg import ffmpeg_prefix as ff
 
+    # start/end are timeline positions; offset_l is the source offset in frames
     start_frame = clip.get("start", 0) or 0
     end_frame = clip.get("end", 0) or 0
     offset_l = clip.get("offsetL", 0) or 0
     offset_r = clip.get("offsetR", 0) or 0
-    adj_start = max(start_frame + offset_l, 0)
-    adj_end = max(end_frame - offset_r, adj_start + 1)
+    clip_dur = end_frame - start_frame
+    adj_start = max(offset_l, 0)
+    adj_end = max(offset_l + clip_dur - offset_r, adj_start + 1)
     start_sec = adj_start / fps
     dur_sec = (adj_end - adj_start) / fps
 
