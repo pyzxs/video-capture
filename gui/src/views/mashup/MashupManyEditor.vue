@@ -286,85 +286,7 @@
           <!-- Attribute Panel -->
           <div class="attribute-panel" :style="{ width: attrWidth + 'px' }">
             <div class="attr-split-handle" @mousedown="startAttrResize"></div>
-            <!-- Group Track Properties -->
-            <div v-if="groupTrack" class="attr-content">
-              <div class="attr-header">素材组属性</div>
-              <div class="attr-form">
-                <template v-if="currentGroup">
-                  <div class="attr-group">
-                    <div class="attr-group-title">基本信息</div>
-                    <label class="attr-row">
-                      <span>组名</span>
-                      <input v-model="currentGroup.name" class="attr-input" />
-                    </label>
-                  </div>
-
-                  <!-- Video list -->
-                  <div class="attr-group">
-                    <div class="attr-group-title">视频列表 ({{ currentGroup.groupVideos.length }})</div>
-                    <div class="group-drop-zone"
-                      @dragover.prevent
-                      @drop="onGroupVideoDrop($event)">
-                      <div v-if="currentGroup.groupVideos.length === 0" class="group-drop-hint">
-                        拖拽视频素材到此处
-                      </div>
-                      <div v-for="(vid, vi) in currentGroup.groupVideos" :key="vid" class="group-item">
-                        <span class="group-item-name">{{ getClipById(vid)?.content || '视频 #' + vi }}</span>
-                        <button class="group-item-remove" @click="removeFromGroupList('video', vi)" title="移除">×</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Audio list -->
-                  <div class="attr-group">
-                    <div class="attr-group-title">配音列表 ({{ currentGroup.groupAudios.length }})</div>
-                    <div class="group-drop-zone"
-                      @dragover.prevent
-                      @drop="onGroupAudioDrop($event)">
-                      <div v-if="currentGroup.groupAudios.length === 0" class="group-drop-hint">
-                        拖拽音频素材到此处
-                      </div>
-                      <div v-for="(aid, ai) in currentGroup.groupAudios" :key="aid" class="group-item">
-                        <span class="group-item-name">{{ getClipById(aid)?.content || '音频 #' + ai }}</span>
-                        <button class="group-item-remove" @click="removeFromGroupList('audio', ai)" title="移除">×</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Effect selector -->
-                  <div class="attr-group">
-                    <div class="attr-group-title">特效</div>
-                    <div class="effect-grid">
-                      <div v-for="ep in effectPresets" :key="ep.key" class="effect-card"
-                        :class="{ active: currentGroup.effect === ep.key }"
-                        @click="applyGroupEffect(ep.key)">
-                        <span class="effect-preview">
-                          <span v-html="effectSvg(ep.icon)" style="width:20px;height:20px;display:flex;align-items:center;justify-content:center"></span>
-                        </span>
-                        <span class="effect-name">{{ ep.name }}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Transition selector -->
-                  <div class="attr-group">
-                    <div class="attr-group-title">转场</div>
-                    <div class="effect-grid">
-                      <div v-for="tp in transitionPresets" :key="tp.key" class="effect-card"
-                        :class="{ active: currentGroup.transitionIn && currentGroup.transitionIn.key === tp.key }"
-                        @click="setGroupTransition(tp)">
-                        <span class="effect-preview" style="background:#1f2937;display:flex;align-items:center;justify-content:center">
-                          <span v-html="transitionSvg(tp.icon)" style="color:#fff;width:18px;height:18px;display:flex;align-items:center;justify-content:center"></span>
-                        </span>
-                        <span class="effect-name">{{ tp.name }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-            <!-- Clip Properties -->
-            <div v-else-if="selectedClip" class="attr-content">
+            <div v-if="selectedClip" class="attr-content">
               <div class="attr-header">属性</div>
               <div class="attr-form">
                 <div class="attr-group">
@@ -501,9 +423,6 @@
                 <svg v-if="!extractingSubtitles" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 9.5h10M7 13h7M7 16.5h9"/></svg>
                 <span v-else class="tb-btn-loading"></span>
               </button>
-              <button class="tb-btn" @click="addGroupToTrack" title="添加素材组（视频+配音）到新轨道">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><line x1="12" y1="11" x2="12" y2="13"/></svg>
-              </button>
               <button class="tb-btn" @click="deleteSelected" :disabled="!selectedClip" title="删除">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
@@ -540,97 +459,32 @@
                 @dragover.prevent="onTrackDragOver($event)"
                 @drop.prevent="onTrackDrop($event)">
                 <div class="track-icons-column" ref="trackIconsRef">
-                  <div v-for="(line, li) in trackLines" :key="li">
-                    <!-- Group track: 2 rows of sub-lane controls -->
-                    <template v-if="line.type === 'group' && line.subLanes">
-                      <div class="track-icon-item"
-                        :class="[trackHeightClass(line.type), { 'is-active': selectLine === li && selectIndex < 0 }]"
-                        @click="if (!line.locked) { selectLine = li; selectIndex = -1 }">
-                        <div class="sub-icon-row">
-                          <span class="ti-type-icon"><component :is="icons.video" /></span>
-                          <button class="ti-btn" :class="{ active: line.subLanes.video.visible }" @click.stop="line.subLanes.video.visible = !line.subLanes.video.visible" :title="line.subLanes.video.visible ? '隐藏视频' : '显示视频'">
-                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="!line.subLanes.video.visible" x1="1" y1="1" x2="23" y2="23"/></svg>
-                          </button>
-                          <button class="ti-btn" :class="{ active: line.subLanes.video.locked }" @click.stop="line.subLanes.video.locked = !line.subLanes.video.locked" :title="line.subLanes.video.locked ? '解锁视频' : '锁定视频'">
-                            <svg v-if="line.subLanes.video.locked" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                            <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><line x1="7" y1="11" x2="7" y2="7"/></svg>
-                          </button>
-                          <button class="ti-btn" :class="{ active: line.subLanes.video.muted }" @click.stop="line.subLanes.video.muted = !line.subLanes.video.muted" :title="line.subLanes.video.muted ? '取消静音' : '静音'">
-                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line v-if="line.subLanes.video.muted" x1="23" y1="9" x2="17" y2="15"/><line v-if="line.subLanes.video.muted" x1="17" y1="9" x2="23" y2="15"/></svg>
-                          </button>
-                        </div>
-                        <div class="sub-icon-row">
-                          <span class="ti-type-icon"><component :is="icons.audio" /></span>
-                          <button class="ti-btn" :class="{ active: line.subLanes.audio.visible }" @click.stop="line.subLanes.audio.visible = !line.subLanes.audio.visible" :title="line.subLanes.audio.visible ? '隐藏音频' : '显示音频'">
-                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="!line.subLanes.audio.visible" x1="1" y1="1" x2="23" y2="23"/></svg>
-                          </button>
-                          <button class="ti-btn" :class="{ active: line.subLanes.audio.locked }" @click.stop="line.subLanes.audio.locked = !line.subLanes.audio.locked" :title="line.subLanes.audio.locked ? '解锁音频' : '锁定音频'">
-                            <svg v-if="line.subLanes.audio.locked" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                            <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><line x1="7" y1="11" x2="7" y2="7"/></svg>
-                          </button>
-                          <button class="ti-btn" :class="{ active: line.subLanes.audio.muted }" @click.stop="line.subLanes.audio.muted = !line.subLanes.audio.muted" :title="line.subLanes.audio.muted ? '取消静音' : '静音'">
-                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line v-if="line.subLanes.audio.muted" x1="23" y1="9" x2="17" y2="15"/><line v-if="line.subLanes.audio.muted" x1="17" y1="9" x2="23" y2="15"/></svg>
-                          </button>
-                        </div>
-                      </div>
-                    </template>
-                    <!-- Normal track icon item -->
-                    <template v-else>
-                      <div class="track-icon-item"
-                        :class="[trackHeightClass(line.type), line.main ? 'is-main' : '',
-                                 { 'is-active': selectLine === li && selectIndex < 0, 'is-locked': line.locked }]"
-                        @click="if (!line.locked) { selectLine = li; selectIndex = -1 }">
-                        <span class="ti-type-icon" :title="line.main ? '主轨道' : trackTypeName(line.type)">
-                          <component :is="trackIconComp(line.type)" />
-                        </span>
-                        <button class="ti-btn" :class="{ active: line.visible }" @click.stop="line.visible = !line.visible" :title="line.visible ? '隐藏轨道' : '显示轨道'">
-                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="!line.visible" x1="1" y1="1" x2="23" y2="23"/></svg>
-                        </button>
-                        <button class="ti-btn" :class="{ active: line.locked }" @click.stop="line.locked = !line.locked" :title="line.locked ? '解锁轨道' : '锁定轨道'">
-                          <svg v-if="line.locked" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                          <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><line x1="7" y1="11" x2="7" y2="7"/></svg>
-                        </button>
-                        <button class="ti-btn" :class="{ active: line.muted }" @click.stop="line.muted = !line.muted" :title="line.muted ? '取消静音' : '静音'">
-                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line v-if="line.muted" x1="23" y1="9" x2="17" y2="15"/><line v-if="line.muted" x1="17" y1="9" x2="23" y2="15"/></svg>
-                        </button>
-                      </div>
-                    </template>
+                  <div v-for="(line, li) in trackLines" :key="li" class="track-icon-item"
+                    :class="[trackHeightClass(line.type), line.main ? 'is-main' : '',
+                             { 'is-active': selectLine === li && selectIndex < 0, 'is-locked': line.locked }]"
+                    @click="if (!line.locked) { selectLine = li; selectIndex = -1 }">
+                    <span class="ti-type-icon" :title="line.main ? '主轨道' : trackTypeName(line.type)">
+                      <component :is="trackIconComp(line.type)" />
+                    </span>
+                    <button class="ti-btn" :class="{ active: line.visible }" @click.stop="line.visible = !line.visible" :title="line.visible ? '隐藏轨道' : '显示轨道'">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="!line.visible" x1="1" y1="1" x2="23" y2="23"/></svg>
+                    </button>
+                    <button class="ti-btn" :class="{ active: line.locked }" @click.stop="line.locked = !line.locked" :title="line.locked ? '解锁轨道' : '锁定轨道'">
+                      <svg v-if="line.locked" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><line x1="7" y1="11" x2="7" y2="7"/></svg>
+                    </button>
+                    <button class="ti-btn" :class="{ active: line.muted }" @click.stop="line.muted = !line.muted" :title="line.muted ? '取消静音' : '静音'">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line v-if="line.muted" x1="23" y1="9" x2="17" y2="15"/><line v-if="line.muted" x1="17" y1="9" x2="23" y2="15"/></svg>
+                    </button>
                   </div>
                 </div>
                 <div class="track-scroll-area" @mousedown="onTimelineSeek($event)">
                   <div v-for="(line, li) in trackLines" :key="li" class="track-row"
                     :class="[trackHeightClass(line.type), line.main ? 'is-main' : '', { 'is-active': selectLine === li }]"
-                    @click="selectLine = li; selectIndex = -1"
-                    @dragover.prevent
-                    @drop="onGroupTrackDrop($event, li)">
-                    <!-- Group track: folder cards spanning full height -->
-                    <template v-if="line.type === 'group' && line.groups">
-                      <div v-for="(g, gi) in line.groups" :key="'gc-' + gi"
-                        class="group-card"
-                        :class="{ 'is-active': selectLine === li && selectGroupIndex === gi && selectIndex < 0 }"
-                        :style="getGroupCardStyle(g, line)"
-                        @mousedown.stop="onGroupCardMouseDown($event, li, gi)"
-                        @dragover.prevent
-                        @drop.stop="onGroupCardDrop($event, li, gi)"
-                        @click.stop="selectLine = li; selectGroupIndex = gi; selectIndex = -1">
-                        <div class="group-card-row group-card-row-top">
-                          <component :is="icons.group" />
-                          <span class="group-card-name">{{ g.name }}</span>
-                          <component :is="icons.video" class="gc-count-icon" />
-                          <span class="gc-count">视频({{ g.groupVideos?.length || 0 }})</span>
-                        </div>
-                        <div class="group-card-row group-card-row-bottom">
-                          <component :is="icons.audio" class="gc-count-icon" />
-                          <span class="gc-count">音频({{ g.groupAudios?.length || 0 }})</span>
-                        </div>
-                      </div>
-                    </template>
-                    <!-- Non-group track: render individual clips -->
-                    <div v-else v-for="(clip, ci) in line.list" :key="clip.id" class="track-clip"
+                    @click="selectLine = li; selectIndex = -1">
+                    <div v-for="(clip, ci) in line.list" :key="clip.id" class="track-clip"
                       :class="{ 'is-selected': selectLine === li && selectIndex === ci, 'is-dragging': dragClipId === clip.id }"
                       :style="getClipStyle(clip)"
-                      draggable="true"
-                      @dragstart.stop="onClipDragStart($event, li, ci)"
                       @click.stop="selectClip(li, ci)"
                       @mousedown.stop="onClipMouseDown($event, li, ci)">
                       <!-- Clip content -->
@@ -709,6 +563,6 @@
   </div>
 </template>
 
-<script src="./MashupEditor.js"></script>
+<script src="./MashupManyEditor.js"></script>
 
-<style src="./MashupEditor.css" scoped></style>
+<style src="./MashupManyEditor.css" scoped></style>

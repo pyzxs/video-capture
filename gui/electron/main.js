@@ -105,6 +105,21 @@ ipcMain.handle('select-directory', async () => {
   return result.filePaths[0]
 })
 
+// 打开多文件选择对话框
+ipcMain.handle('select-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: '媒体文件', extensions: ['mp4', 'avi', 'mov', 'mkv', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'mp3', 'wav', 'aac', 'ogg', 'flac', 'm4a'] },
+      { name: '全部文件', extensions: ['*'] },
+    ],
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return null
+  }
+  return result.filePaths
+})
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   createWindow()

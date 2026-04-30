@@ -1,5 +1,5 @@
 import { ref, computed, onMounted, watch } from 'vue'
-import { materialApi, folderApi } from '../../api/index.js'
+import { materialApi, folderApi, exportApi } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 import { useFolders } from '../../composables/useFolders.js'
 import Pagination from '../../components/Pagination.vue'
@@ -429,6 +429,35 @@ const mdInsertText = (before, after) => {
       }
     }
 
+    const exporting = ref(false)
+    const doExport = async (ids) => {
+      if (ids.length === 0) return
+      let destDir = ''
+      if (window.electronAPI && window.electronAPI.selectDirectory) {
+        destDir = await window.electronAPI.selectDirectory()
+        if (!destDir) return
+      } else {
+        toast.warning('当前环境不支持选择目录')
+        return
+      }
+      exporting.value = true
+      try {
+        const res = await exportApi.exportFiles({ material_ids: ids, dest_dir: destDir })
+        const d = res.data
+        if (d.errors && d.errors.length > 0) {
+          toast.warning(`导出完成：成功 ${d.copied} 个，失败 ${d.errors.length} 个`)
+        } else {
+          toast.success(`已导出 ${d.copied} 个素材到 ${destDir}`)
+        }
+      } catch (e) {
+        toast.error('导出失败: ' + (e.response?.data?.detail || e.message))
+      } finally {
+        exporting.value = false
+      }
+    }
+    const exportSelected = () => doExport([...selectedIds.value])
+    const exportItem = (id) => doExport([id])
+
     // Lazy video loading
     const activeVideos = ref(new Set())
     const videoEls = {}
@@ -478,6 +507,7 @@ const mdInsertText = (before, after) => {
       showMoveDialog, showMoveFolder, closeMoveDialog, moveToFolder,
       selectedIds, isAllSelected, viewMode, toggleSelect, toggleSelectAll, clearSelection, truncateFilename,
       showBatchMoveFolder, moveBatchMode, batchDelete,
+      exporting, exportSelected, exportItem,
       openCreate, openEdit, closeDialog, saveMaterial, deleteMaterial,
       showDialog, editing, form, selectedFile, dragging, saving, fileInput,
       onFileSelect, onDrop, clearFile, formatSize, truncate,

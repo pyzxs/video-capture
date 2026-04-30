@@ -9,11 +9,11 @@
       <template v-else-if="profile">
         <div class="info-grid">
           <div class="info-item">
-            <label>User ID</label>
+            <label>用户ID</label>
             <span class="mono">{{ profile.user_id }}</span>
           </div>
           <div class="info-item">
-            <label>API Key</label>
+            <label>授权密钥</label>
             <span class="mono">{{ profile.api_key }}</span>
           </div>
           <div class="info-item">

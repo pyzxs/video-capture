@@ -17,7 +17,7 @@ dependencies = [
     "aiofiles>=25.1.0",
     "lxml>=6.1.0",
     "yt-dlp>=2026.3.17",
-    "imageio>=2.37.3",
+    "imageio[opencv,pyav]>=2.37.3",
     "moviepy>=2.2.1",
     "cryptography>=47.0.0",
 ]

@@ -54,6 +54,13 @@ export const materialApi = {
   update: (id, data) => api.put(`/materials/${id}`, data),
   remove: (id) => api.delete(`/materials/${id}`),
   tts: (data) => api.post('/materials/tts', data, { timeout: 120000 }),
+  createFromSegment: (sourceId, startFrame, endFrame) => {
+    const fd = new FormData()
+    fd.append('source_id', sourceId)
+    fd.append('start_frame', startFrame)
+    fd.append('end_frame', endFrame)
+    return api.post('/materials/from-segment', fd)
+  },
 }
 
 // ── Settings ──
@@ -74,6 +81,7 @@ export const generatedApi = {
   autoGenerate: (data) => api.post('/generated/auto-generate', data, { timeout: 600000 }),
   autoBatchGenerate: (data) => api.post('/generated/auto-batch-generate', data, { timeout: 600000 }),
   autoSearch: (data) => api.post('/generated/auto-search', data, { timeout: 60000 }),
+  batchGenerateGroups: (id) => api.post(`/generated/${id}/batch-generate-groups`, null, { timeout: 600000 }),
 }
 
 // ── Folders ──
@@ -128,4 +136,14 @@ export const profileApi = {
   get: () => api.get('/profile'),
   records: (page = 1, pageSize = 20) => api.get('/profile/records', { params: { page, page_size: pageSize } }),
   recharge: (code) => api.post('/profile/recharge', { code }),
+}
+
+// ── Editor ──
+export const editorApi = {
+  extractSubtitles: (clips) => api.post('/editor/extract-subtitles', { clips }, { timeout: 300000 }),
+}
+
+// ── Export ──
+export const exportApi = {
+  exportFiles: (data) => api.post('/export', data, { timeout: 300000 }),
 }

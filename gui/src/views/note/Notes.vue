@@ -54,7 +54,7 @@
             <div class="note-card-time">{{ formatDate(n.updated_at) }}</div>
           </div>
           <div class="note-card-actions">
-            <button @click.stop="openMoveDialog(n)" title="移动到文件夹">
+            <button @click.stop="openMoveDialog(n)" title="移动">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1"/><path d="M17 22v-6"/><path d="M20 19l-3-3-3 3"/></svg>
             </button>
             <button @click.stop="exportNote(n)" title="导出 Markdown">

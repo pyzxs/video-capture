@@ -565,6 +565,8 @@ nav { flex: 1; padding: 12px 0; display: flex; flex-direction: column; align-ite
 .btn-info:hover:not(:disabled) { background: #2563eb; }
 .btn-default { background: #f3f4f6; color: #374151; border: 1px solid var(--border); }
 .btn-default:hover:not(:disabled) { background: #e5e7eb; }
+.btn-warning { background: #f59e0b; color: #fff; }
+.btn-warning:hover:not(:disabled) { background: #d97706; }
 
 /* Inputs */
 .search-input {

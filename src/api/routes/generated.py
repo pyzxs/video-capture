@@ -17,7 +17,7 @@ from src.api.schemas import (
 from src.config import get_config
 from src.logger import default_logger as logger
 from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
-from src.db.models import GeneratedVideo
+from src.db.models import GeneratedVideo, Material
 
 router = APIRouter(prefix="/generated", tags=["混剪视频管理"])
 
@@ -332,12 +332,13 @@ def get_generated(gen_id: int, db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 def create_generated(data: GeneratedVideoCreate, db: Session = Depends(get_db)):
+    synced_data = _sync_text_materials(data.data or "{}", data.frame_width, data.frame_height, db)
     gen = GeneratedVideo(
         title=data.title,
         script=data.script,
         tts_voice=data.tts_voice,
         output_filepath=data.output_filepath,
-        data=data.data or "{}",
+        data=synced_data,
         frame_width=data.frame_width,
         frame_height=data.frame_height,
         status="created",
@@ -356,6 +357,8 @@ def update_generated(gen_id: int, data: GeneratedVideoUpdate, db: Session = Depe
     if not gen:
         raise HTTPException(404, "混剪视频不存在")
     for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "data":
+            value = _sync_text_materials(value or "{}", data.frame_width or 0, data.frame_height or 0, db)
         setattr(gen, field, value)
 
     db.commit()
@@ -371,6 +374,162 @@ def delete_generated(gen_id: int, db: Session = Depends(get_db)):
     db.delete(gen)
     db.commit()
     return {"ok": True}
+
+
+def _sync_text_materials(data_json: str, frame_width: int = 0, frame_height: int = 0, db: Session = None) -> str:
+    """将 tracks 中的文字片段同步到 Material 表（type=text, status=0），方便后续复用。"""
+    import json
+    try:
+        data = json.loads(data_json) if data_json else {}
+    except Exception:
+        return data_json
+
+    tracks = data.get("tracks", [])
+    modified = False
+    for track in tracks:
+        for clip in track.get("list", []):
+            if clip.get("type") != "text":
+                continue
+            content = (clip.get("content") or "").strip()
+            if not content:
+                continue
+
+            mid = clip.get("material_id")
+            mat = None
+            if mid:
+                mat = db.query(Material).get(mid)
+            if mat:
+                mat.content = content
+            else:
+                mat = Material(
+                    type="text",
+                    content=content,
+                    status=0,
+                    frame_width=frame_width,
+                    frame_height=frame_height,
+                )
+                db.add(mat)
+                db.flush()
+                clip["material_id"] = mat.id
+                modified = True
+
+    if modified:
+        return json.dumps(data, ensure_ascii=False)
+    return data_json
+
+
+def _format_ass_time(seconds: float) -> str:
+    """Format seconds as ASS timestamp: H:MM:SS.cc"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    cs = int((seconds % 1) * 100)
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def _hex_to_ass_bgr(hex_color: str) -> str:
+    """Convert '#rrggbb' to ASS &HBBGGRR& format."""
+    if hex_color.startswith("#") and len(hex_color) >= 7:
+        r, g, b = hex_color[1:3], hex_color[3:5], hex_color[5:7]
+        return f"&H{b}{g}{r}&"
+    return "&HFFFFFF&"
+
+
+def _parse_rgba(rgba_str: str):
+    """Parse 'rgba(r,g,b,a)' or '#rrggbb' → (r, g, b, a_0_255)."""
+    if not rgba_str:
+        return 0, 0, 0, 0
+    s = rgba_str.strip()
+    if s.startswith("rgba"):
+        parts = s[5:-1].split(",")
+        if len(parts) >= 4:
+            return int(parts[0]), int(parts[1]), int(parts[2]), int(float(parts[3]) * 255)
+    if s.startswith("#"):
+        if len(s) >= 7:
+            return int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16), 255
+    return 0, 0, 0, 0
+
+
+def _clip_ass_style(clip: dict, canvas_w: int, canvas_h: int) -> str:
+    """Build ASS inline override codes from a text clip's styling properties."""
+    codes = []
+
+    ff = clip.get("fontFamily") or "sans-serif"
+    fs = clip.get("fontSize") or 48
+    codes.append(f"\\fn{ff}")
+    codes.append(f"\\fs{fs}")
+
+    fc = clip.get("fontColor") or "#ffffff"
+    codes.append(f"\\c{_hex_to_ass_bgr(fc)}")
+
+    codes.append("\\b1" if clip.get("bold") else "\\b0")
+    codes.append("\\i1" if clip.get("italic") else "\\i0")
+
+    if clip.get("outline"):
+        oc = clip.get("outlineColor") or "#000000"
+        codes.append(f"\\bord2")
+        codes.append(f"\\3c{_hex_to_ass_bgr(oc)}")
+    else:
+        codes.append("\\bord0")
+
+    codes.append("\\shad2" if clip.get("shadow") else "\\shad0")
+
+    if clip.get("bgEnabled"):
+        r, g, b, a = _parse_rgba(clip.get("bgColor"))
+        if a > 0:
+            codes.append("\\bord3")
+            codes.append(f"\\3c&H{b:02X}{g:02X}{r:02X}&")
+            codes.append(f"\\1a&H{255 - a:02X}&")
+
+    ta = clip.get("textAlign") or "center"
+    cx = (clip.get("centerX") or 50) / 100
+    cy = (clip.get("centerY") or 50) / 100
+    x = int(canvas_w * cx)
+    y = int(canvas_h * cy)
+    codes.append(f"\\pos({x},{y})")
+    if ta == "left":
+        codes.append("\\an1")
+    elif ta == "right":
+        codes.append("\\an3")
+    else:
+        codes.append("\\an5")
+
+    return "{" + "".join(codes) + "}"
+
+
+def _write_ass(text_clips: list[dict], fps: float, output_path: str, canvas_w: int = 1920, canvas_h: int = 1080):
+    """Write text clips as an ASS subtitle file with per-clip font styling."""
+    entries = []
+    for clip in text_clips:
+        content = clip.get("content", "").strip()
+        if not content:
+            continue
+        start_frame = clip.get("start", 0) or 0
+        end_frame = clip.get("end", 0) or 0
+        if end_frame <= start_frame:
+            continue
+        start_sec = start_frame / fps
+        end_sec = end_frame / fps
+        style = _clip_ass_style(clip, canvas_w, canvas_h)
+        entries.append((start_sec, end_sec, style, content))
+
+    entries.sort(key=lambda e: e[0])
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("[Script Info]\n")
+        f.write("ScriptType: v4.00+\n")
+        f.write(f"PlayResX: {canvas_w}\n")
+        f.write(f"PlayResY: {canvas_h}\n")
+        f.write("WrapStyle: 2\n\n")
+        f.write("[V4+ Styles]\n")
+        f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+        f.write("Style: Default,Noto Sans SC,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,10,1\n\n")
+        f.write("[Events]\n")
+        f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+        for i, (start_sec, end_sec, style, content) in enumerate(entries, 1):
+            start_ts = _format_ass_time(start_sec)
+            end_ts = _format_ass_time(end_sec)
+            f.write(f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{style}{content}\n")
 
 
 def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None) -> GeneratedVideo:
@@ -395,11 +554,13 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
     Path(temp_dir).mkdir(parents=True, exist_ok=True)
     segment_paths = []
     audio_paths = []
+    text_clips = []
 
     for track in tracks:
         for clip in track.get("list", []):
             ctype = clip.get("type", "")
             if ctype == "text":
+                text_clips.append(clip)
                 continue
 
             fp = clip.get("filepath", "")
@@ -498,6 +659,20 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
         else:
             logger.warning("没有配音脚本，跳过配音")
 
+    # Burn text/subtitle clips as subtitles
+    if text_clips:
+        try:
+            from src.processing.ffmpeg import composite_subtitles
+            ass_path = str(Path(temp_dir).parent / f"subs_{gen.id}.ass")
+            _write_ass(text_clips, fps, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
+            output = composite_subtitles(output, ass_path)
+            try:
+                Path(ass_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning("字幕压制失败（不影响生成）: %s", e)
+
     gen.status = "completed"
     gen.output_filepath = output
     gen.thumbnail = generate_thumbnail(output)
@@ -516,6 +691,310 @@ def generate_video(
     if not gen:
         raise HTTPException(404, "混剪视频不存在")
     return _gen_to_dict(_execute_generate(gen, db, voice))
+
+
+@router.post("/{gen_id}/batch-generate-groups")
+def batch_generate_groups(gen_id: int, db: Session = Depends(get_db)):
+    """批量生成组素材混剪视频。
+
+    对每组内的视频与音频做笛卡尔积，各组之间再做笛卡尔积，
+    总视频数 = ∏(Vi × Ai)，每个组合生成一条独立视频。
+    """
+    import json, itertools
+    from src.db.models import Material
+    from src.processing.ffmpeg import mix_audio_tracks, concat_videos
+    from src.processing.ffmpeg import ffmpeg_prefix as ff
+    import subprocess, uuid
+
+    gen = db.query(GeneratedVideo).get(gen_id)
+    if not gen:
+        raise HTTPException(404, "混剪视频不存在")
+
+    try:
+        clip_data = json.loads(gen.data) if gen.data else {}
+    except Exception:
+        clip_data = {}
+    tracks = clip_data.get("tracks", [])
+
+    # Find group tracks with sub-groups
+    group_tracks = [t for t in tracks if t.get("type") == "group" and t.get("groups")]
+    if not group_tracks:
+        # No groups, fall back to normal generation
+        return _gen_to_dict(_execute_generate(gen, db))
+
+    non_group_tracks = [t for t in tracks if t.get("type") != "group"]
+
+    fps = gen.frame_rate or 30
+    target_w = gen.frame_width or None
+    target_h = gen.frame_height or None
+
+    # Build the list of (video_clip, audio_clip) pairs for each sub-group (in order)
+    # groups_order[i] = list of (video_clip_dict, audio_clip_dict or None)
+    groups_order = []
+    for gt in group_tracks:
+        clip_map = {c["id"]: c for c in gt.get("list", [])}
+        for g in gt.get("groups", []):
+            videos = g.get("groupVideos", []) or []
+            audios = g.get("groupAudios", []) or []
+            if not videos:
+                continue
+            pairs = []
+            for vid in videos:
+                vclip = clip_map.get(vid)
+                if not vclip:
+                    continue
+                if audios:
+                    for aid in audios:
+                        aclip = clip_map.get(aid)
+                        pairs.append((vclip, aclip))
+                else:
+                    pairs.append((vclip, None))
+            if pairs:
+                groups_order.append(pairs)
+
+    if not groups_order:
+        raise HTTPException(400, "组内没有可用的视频素材")
+
+    # Cartesian product across groups
+    combinations = list(itertools.product(*groups_order))
+    logger.info("组素材批量生成: %d 组, %d 种组合", len(groups_order), len(combinations))
+
+    temp_dir = ensure_date_dir(get_config("mixed_dir"), "segments")
+    Path(temp_dir).mkdir(parents=True, exist_ok=True)
+
+    results = []
+    for combo_idx, combo in enumerate(combinations):
+        # combo is a tuple of (video_clip, audio_clip|None), one per group
+        segment_paths = []
+        audio_paths = []
+        text_clips = []
+
+        # 1. Process non-group tracks (text, standalone video, etc.)
+        for track in non_group_tracks:
+            for clip in track.get("list", []):
+                ctype = clip.get("type", "")
+                if ctype == "text":
+                    text_clips.append(clip)
+                    continue
+                fp = clip.get("filepath", "")
+                if not fp or not Path(fp).exists():
+                    mid = clip.get("material_id")
+                    if mid is not None:
+                        m = db.query(Material).get(mid)
+                        if m and Path(m.filepath).exists():
+                            fp = m.filepath
+                if not fp or not Path(fp).exists():
+                    continue
+                if ctype == "audio":
+                    audio_paths.append(fp)
+                    continue
+                seg = _make_segment(clip, fp, fps, gen_id, temp_dir)
+                if seg:
+                    segment_paths.append(seg)
+
+        # 2. Process selected group clips: per-group mix first, then concat
+        group_segments = []  # one mixed segment per group
+        for vclip, aclip in combo:
+            # Resolve video filepath
+            fp_v = vclip.get("filepath", "")
+            if not fp_v or not Path(fp_v).exists():
+                mid = vclip.get("material_id")
+                if mid is not None:
+                    m = db.query(Material).get(mid)
+                    if m and Path(m.filepath).exists():
+                        fp_v = m.filepath
+            if not fp_v or not Path(fp_v).exists():
+                continue
+
+            # Extract trimmed video segment
+            vid_seg = _make_segment(vclip, fp_v, fps, gen_id, temp_dir)
+            if not vid_seg:
+                continue
+
+            # If there's a paired audio, trim it to video duration and mix
+            if aclip:
+                fp_a = aclip.get("filepath", "")
+                if not fp_a or not Path(fp_a).exists():
+                    mid = aclip.get("material_id")
+                    if mid is not None:
+                        m = db.query(Material).get(mid)
+                        if m and Path(m.filepath).exists():
+                            fp_a = m.filepath
+                if fp_a and Path(fp_a).exists():
+                    vid_dur = (vclip.get("end", 0) - vclip.get("start", 0)) / fps
+                    audio_seg = _extract_audio_segment(fp_a, vid_dur, gen_id, temp_dir)
+                    if audio_seg:
+                        try:
+                            vid_seg = mix_audio_tracks(vid_seg, [audio_seg])
+                            try:
+                                Path(audio_seg).unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            logger.warning("组内音频混入失败: %s", e)
+
+            group_segments.append(vid_seg)
+
+        if not group_segments:
+            logger.warning("组合 %d 没有可用视频素材，跳过", combo_idx + 1)
+            continue
+
+        # Add non-group video segments before group segments
+        all_segments = segment_paths + group_segments
+
+        # 3. Generate the video by concatenating all segments
+        suffix = f"_{combo_idx + 1}" if len(combinations) > 1 else ""
+        output = str(ensure_date_dir(get_config("mixed_dir"), f"remix_{gen_id}_g{suffix}.mp4"))
+        concat_videos(all_segments, output, target_width=target_w, target_height=target_h)
+
+        # Cleanup temp segments
+        for sp in all_segments:
+            try:
+                if sp.startswith(str(temp_dir)):
+                    Path(sp).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        # Mix non-group audio tracks globally (these are background music etc.)
+        if audio_paths:
+            try:
+                output = mix_audio_tracks(output, audio_paths)
+            except Exception as e:
+                logger.warning("音频混入失败: %s", e)
+
+        # TTS dubbing
+        voice = None  # batch generates use saved voice from gen record
+        if voice:
+            from src.services.tts import dub_from_text
+            if gen.script:
+                try:
+                    dubbed = str(ensure_date_dir(get_config("mixed_dir"), f"remix_{gen_id}_g{suffix}_dubbed.mp4"))
+                    dub_from_text(output, gen.script, voice=voice, output_path=dubbed)
+                    output = dubbed
+                except Exception as e:
+                    logger.warning("配音失败: %s", e)
+
+        # Burn subtitles
+        if text_clips:
+            try:
+                from src.processing.ffmpeg import composite_subtitles
+                ass_path = str(Path(temp_dir).parent / f"subs_{gen_id}_g{combo_idx}.ass")
+                _write_ass(text_clips, fps, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
+                output = composite_subtitles(output, ass_path)
+                try:
+                    Path(ass_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning("字幕压制失败: %s", e)
+
+        # Generate thumbnail
+        thumb = generate_thumbnail(output)
+
+        # Create GeneratedVideo record for this combination
+        combo_gen = GeneratedVideo(
+            title=f"{gen.title or '混剪'}{suffix}",
+            script=gen.script,
+            data=gen.data,
+            output_filepath=output,
+            frame_width=gen.frame_width,
+            frame_height=gen.frame_height,
+            frame_rate=gen.frame_rate,
+            status="completed",
+            thumbnail=thumb,
+            folder_id=gen.folder_id,
+        )
+        db.add(combo_gen)
+        db.commit()
+        db.refresh(combo_gen)
+        results.append(_gen_to_dict(combo_gen))
+
+    if not results:
+        raise HTTPException(400, "没有成功生成任何视频")
+
+    return {"count": len(results), "results": results}
+
+
+def _make_segment(clip: dict, fp: str, fps: int, gen_id: int, temp_dir: str) -> str | None:
+    """Extract a trimmed segment from a source file. Returns the segment path or None."""
+    import subprocess, uuid
+    from src.processing.ffmpeg import ffmpeg_prefix as ff
+
+    start_frame = clip.get("start", 0) or 0
+    end_frame = clip.get("end", 0) or 0
+    offset_l = clip.get("offsetL", 0) or 0
+    offset_r = clip.get("offsetR", 0) or 0
+    adj_start = max(start_frame + offset_l, 0)
+    adj_end = max(end_frame - offset_r, adj_start + 1)
+    start_sec = adj_start / fps
+    dur_sec = (adj_end - adj_start) / fps
+
+    is_image = fp.lower().endswith(('.jpg', '.png', '.jpeg'))
+    if is_image:
+        return fp
+
+    seg_path = str(Path(temp_dir) / f"seg_{gen_id}_{uuid.uuid4().hex[:8]}.mp4")
+    cmd = [
+        f"{ff}ffmpeg", "-y",
+        "-ss", f"{start_sec:.3f}",
+        "-i", str(fp),
+        "-t", f"{dur_sec:.3f}",
+        "-c:v", "libx264", "-crf", "18",
+        "-c:a", "aac",
+        "-pix_fmt", "yuv420p",
+        "-avoid_negative_ts", "make_zero",
+        str(seg_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        valid = False
+        try:
+            probe = subprocess.run(
+                [f"{ff}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                 "-of", "csv=p=0", str(seg_path)],
+                capture_output=True, text=True, timeout=10,
+            )
+            valid = bool(probe.stdout.strip())
+        except Exception:
+            pass
+        if valid:
+            return seg_path
+        else:
+            logger.warning("裁剪素材无有效媒体流 %s", fp)
+            Path(seg_path).unlink(missing_ok=True)
+            return None
+    except subprocess.CalledProcessError as e:
+        logger.warning("裁剪素材失败 %s: %s", fp, e.stderr[-200:] if e.stderr else "")
+        Path(seg_path).unlink(missing_ok=True)
+        return None
+
+
+def _extract_audio_segment(fp: str, duration_sec: float, gen_id: int, temp_dir: str) -> str | None:
+    """Extract an audio segment trimmed to the given duration. Returns the wav path or None."""
+    import subprocess, uuid
+    from src.processing.ffmpeg import ffmpeg_prefix as ff
+
+    seg_path = str(Path(temp_dir) / f"aud_{gen_id}_{uuid.uuid4().hex[:8]}.wav")
+    cmd = [
+        f"{ff}ffmpeg", "-y",
+        "-ss", "0",
+        "-i", str(fp),
+        "-t", f"{duration_sec:.3f}",
+        "-vn", "-acodec", "pcm_s16le",
+        "-ar", "44100", "-ac", "2",
+        str(seg_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        if Path(seg_path).exists() and Path(seg_path).stat().st_size > 0:
+            return seg_path
+        else:
+            Path(seg_path).unlink(missing_ok=True)
+            return None
+    except subprocess.CalledProcessError as e:
+        logger.warning("提取音频片段失败 %s: %s", fp, e.stderr[-200:] if e.stderr else "")
+        Path(seg_path).unlink(missing_ok=True)
+        return None
 
 
 @router.post("/{gen_id}/dub")

@@ -40,19 +40,19 @@ _DEFAULTS = {
     "asr_model_size": "base",
     "asr_api_model": "FunAudioLLM/SenseVoiceSmall",
     "whisper_model_dir": "model/whisper",
-    "vector_db_path": "database/chroma_db",
+    "vector_db_path": "storage/database/chroma_db",
     "embedding_model": "BAAI/bge-m3",
     "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
     "tts_voice": "FunAudioLLM/CosyVoice2-0.5B:anna",
-    "source_dir": "videos/source",
-    "material_dir": "videos/material",
-    "mixed_dir": "videos/mixed",
-    "thumbnail_dir": "thumbnails",
+    "source_dir": "storage/videos/source",
+    "material_dir": "storage/videos/material",
+    "mixed_dir": "storage/videos/mixed",
+    "thumbnail_dir": "storage/thumbnails",
     "paragraph_gap_threshold": 2.0,
     "subtitle_crop_bottom": 0,
     "log_level": "INFO",
     "log_dir": "logs",
-    "cms_base_url": "http://localhost:8091",
+    "cms_base_url": "https://video-capture.weigou365.cn",
     "user_id": "",
     "api_key": "",
 }
@@ -70,11 +70,11 @@ _TYPE_MAP = {
 }
 
 # 数据库连接（硬编码，需要在 DB 初始化前使用）
-DATABASE_URL = "sqlite:///resource/database/material.db"
+DATABASE_URL = "sqlite:///storage/database/material.db"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-OUTPUT_DIR = Path(BASE_DIR + "/resource/output")
+OUTPUT_DIR = Path(BASE_DIR + "/storage/output")
 
 _fernet: Fernet | None = None
 _fernet_error: bool = False

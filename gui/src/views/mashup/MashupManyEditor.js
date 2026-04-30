@@ -48,11 +48,10 @@ const icons = {
   image: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('rect', { x: '3', y: '3', width: '18', height: '18', rx: '2', ry: '2' }), h('circle', { cx: '8.5', cy: '8.5', r: '1.5' }), h('polyline', { points: '21 15 16 10 5 21' })]) } },
   audio: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('path', { d: 'M9 18V5l12-2v13' }), h('circle', { cx: '6', cy: '18', r: '3' }), h('circle', { cx: '18', cy: '16', r: '3' })]) } },
   text: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('polyline', { points: '4 7 4 4 20 4 20 7' }), h('line', { x1: '9', y1: '20', x2: '15', y2: '20' }), h('line', { x1: '12', y1: '4', x2: '12', y2: '20' })]) } },
-  group: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('rect', { x: '3', y: '3', width: '7', height: '7', rx: '1' }), h('rect', { x: '14', y: '3', width: '7', height: '7', rx: '1' }), h('rect', { x: '3', y: '14', width: '7', height: '7', rx: '1' }), h('rect', { x: '14', y: '14', width: '7', height: '7', rx: '1' })]) } },
 }
 
 export default {
-  name: 'MashupEditor',
+  name: 'MashupManyEditor',
   setup() {
     const route = useRoute()
     const router = useRouter()
@@ -584,32 +583,12 @@ export default {
       return false
     }
 
-    // Find which group a clip belongs to in a group track
-    function findGroupForClip(line, clipId) {
-      if (!line || !line.groups) return null
-      for (const g of line.groups) {
-        const allIds = new Set([...(g.groupVideos || []), ...(g.groupAudios || [])])
-        if (allIds.has(clipId)) return g
-      }
-      return null
-    }
-
-    // Find the best clip that carries audio at the given frame position.
-    // For group-track clips, skip audio if the group's first video has ended.
+    // Find the best clip that carries audio at the given frame position
     function findAudioClip(frame) {
       for (const line of trackLines.value) {
         if (line.muted) continue
         for (const clip of line.list) {
-          if (frame >= clip.start && frame < clip.end && (clip.type === 'video' || clip.type === 'audio')) {
-            if (line.type === 'group' && line.groups) {
-              const g = findGroupForClip(line, clip.id)
-              if (g && g.groupVideos && g.groupVideos.length > 0) {
-                const firstVideo = line.list.find(c => c.id === g.groupVideos[0])
-                if (firstVideo && frame >= firstVideo.end) continue
-              }
-            }
-            return clip
-          }
+          if (frame >= clip.start && frame < clip.end && (clip.type === 'video' || clip.type === 'audio')) return clip
         }
       }
       return null
@@ -920,7 +899,7 @@ export default {
     // ── Track height utilities ──
     const trackHeightMap = { video: 64, audio: 48, image: 48, text: 32 }
     const trackHeightClass = (t) => `th-${t}`
-    const trackTypeName = (t) => ({ video: '视频轨道', audio: '音频轨道', image: '图片轨道', text: '文字轨道', group: '素材组' }[t] || t)
+    const trackTypeName = (t) => ({ video: '视频轨道', audio: '音频轨道', image: '图片轨道', text: '文字轨道' }[t] || t)
     const trackIconComp = (t) => icons[t] || icons.video
     const typeLabel = (t) => ({ video: '视频', image: '图片', scene: '场景', audio: '音频', text: '文字' }[t] || t || '素材')
 
@@ -1037,31 +1016,6 @@ export default {
 
     // ── Track operations ──
     const addToTimeline = (m) => {
-      // If a group track with a selected sub-group, add material to it
-      if (selectLine.value >= 0 && selectIndex.value < 0) {
-        const selTrack = trackLines.value[selectLine.value]
-        if (selTrack && selTrack.type === 'group' && currentGroup.value) {
-          if (m.type === 'video' || m.type === 'image') {
-            addToGroupVideos(m)
-          } else if (m.type === 'audio') {
-            addToGroupAudios(m)
-          }
-          return
-        }
-        // If group track but no sub-group selected, prompt to create one
-        if (selTrack && selTrack.type === 'group' && !currentGroup.value) {
-          // Select the first group if available
-          if (selTrack.groups && selTrack.groups.length > 0) {
-            selectGroupIndex.value = 0
-            if (m.type === 'video' || m.type === 'image') {
-              addToGroupVideos(m)
-            } else if (m.type === 'audio') {
-              addToGroupAudios(m)
-            }
-          }
-          return
-        }
-      }
       const frames = m.type === 'image' ? 150 : 300
       const clip = {
         id: genId(),
@@ -1117,8 +1071,14 @@ export default {
         }
         const line = makeTrack(m.type)
         line.list = [{ ...clip }]
-        // Insert at correct layer position
-        trackLines.value.splice(getTrackInsertIndex(m.type), 0, line)
+        // Insert text at top, video/audio after main, others before last
+        if (m.type === 'text') {
+          trackLines.value.unshift(line)
+        } else if (m.type === 'video' || m.type === 'audio') {
+          trackLines.value.push(line)
+        } else {
+          trackLines.value.splice(trackLines.value.length - 1, 0, line)
+        }
         selectLine.value = trackLines.value.indexOf(line)
         selectIndex.value = 0
       }
@@ -1166,7 +1126,7 @@ export default {
       let targetLine = trackLines.value.find(l => l.type === 'text' && !l.locked)
       if (!targetLine) {
         targetLine = makeTrack('text')
-        trackLines.value.splice(getTrackInsertIndex('text'), 0, targetLine)
+        trackLines.value.unshift(targetLine)
       }
       const lastClip = targetLine.list[targetLine.list.length - 1]
       const newStart = lastClip ? lastClip.end + 1 : 0
@@ -1194,31 +1154,10 @@ export default {
     // Helper to create track objects with default state
     const makeTrack = (type, main = false) => ({ type, main, list: [], visible: true, locked: false, muted: false })
 
-    // Track layering order: text > image > video > audio > group (top to bottom)
-    const trackOrder = { text: 0, image: 1, video: 2, audio: 3, group: 4 }
-    const getTrackInsertIndex = (type) => {
-      const priority = trackOrder[type] ?? 2
-      for (let i = trackLines.value.length - 1; i >= 0; i--) {
-        const tp = trackOrder[trackLines.value[i].type] ?? 2
-        if (tp <= priority) return i + 1
-      }
-      return 0
-    }
-
     const deleteSelected = () => {
       if (selectLine.value < 0 || selectIndex.value < 0) return
       const line = trackLines.value[selectLine.value]
       if (!line || line.locked) return
-      const clip = line.list[selectIndex.value]
-      // Clean up group list references (check all sub-groups)
-      if (line.type === 'group' && clip && line.groups) {
-        for (const g of line.groups) {
-          const vi = (g.groupVideos || []).indexOf(clip.id)
-          if (vi >= 0) g.groupVideos.splice(vi, 1)
-          const ai = (g.groupAudios || []).indexOf(clip.id)
-          if (ai >= 0) g.groupAudios.splice(ai, 1)
-        }
-      }
       line.list.splice(selectIndex.value, 1)
       if (line.list.length === 0 && !line.main) {
         trackLines.value.splice(selectLine.value, 1)
@@ -1229,7 +1168,7 @@ export default {
 
     const addTrack = () => {
       const type = 'video'
-      trackLines.value.splice(getTrackInsertIndex(type), 0, makeTrack(type))
+      trackLines.value.push(makeTrack(type))
       toast.success(`已添加${trackTypeName(type)}`)
     }
 
@@ -1317,7 +1256,7 @@ export default {
         let targetLine = trackLines.value.find(l => l.type === 'text' && !l.locked)
         if (!targetLine) {
           targetLine = makeTrack('text')
-          trackLines.value.splice(getTrackInsertIndex('text'), 0, targetLine)
+          trackLines.value.unshift(targetLine)
         }
 
         for (const sc of subtitleClips) {
@@ -1331,335 +1270,6 @@ export default {
       } finally {
         extractingSubtitles.value = false
       }
-    }
-
-    // ── 添加素材组（视频 + 配音）到独立轨道 ──
-    const addGroupToTrack = async () => {
-      const groupName = await toast.prompt('请输入素材组名称', '添加素材组', '')
-      if (!groupName) return
-
-      // Find or create group track
-      let gt = trackLines.value.find(l => l.type === 'group')
-      if (!gt) {
-        gt = makeTrack('group')
-        gt.groups = []
-        gt.subLanes = { video: { visible: true, locked: false, muted: false }, audio: { visible: true, locked: false, muted: false } }
-        trackLines.value.splice(getTrackInsertIndex('group'), 0, gt)
-      } else if (!gt.groups) {
-        gt.groups = []
-      }
-      if (!gt.subLanes) {
-        gt.subLanes = { video: { visible: true, locked: false, muted: false }, audio: { visible: true, locked: false, muted: false } }
-      }
-
-      // Compute cardStart: place to the right of existing groups
-      let cardStart = 0
-      for (const eg of gt.groups) {
-        const right = (eg.cardStart || 0) + getGroupCardDuration(eg, gt) + 10
-        if (right > cardStart) cardStart = right
-      }
-      // Add new sub-group
-      const newGroup = {
-        name: groupName.trim(),
-        groupVideos: [],
-        groupAudios: [],
-        cardStart,
-      }
-      gt.groups.push(newGroup)
-      selectLine.value = trackLines.value.indexOf(gt)
-      selectGroupIndex.value = gt.groups.length - 1
-      selectIndex.value = -1
-      updateTotalFrames()
-      toast.success(`已添加素材组「${newGroup.name}」`)
-    }
-
-    // ── 素材组属性操作 ──
-    const groupTrack = computed(() => {
-      if (selectLine.value < 0 || selectIndex.value >= 0) return null
-      const t = trackLines.value[selectLine.value]
-      return t && t.type === 'group' ? t : null
-    })
-
-    const selectGroupIndex = ref(-1)
-    const currentGroup = computed(() => {
-      const gt = groupTrack.value
-      if (!gt || selectGroupIndex.value < 0) return null
-      return gt.groups[selectGroupIndex.value] || null
-    })
-
-    const addToGroupVideos = (m) => {
-      if (!currentGroup.value) return
-      const frames = 300
-      const groupClips = groupTrack.value.list.filter(c => {
-        const ids = new Set([...(currentGroup.value.groupVideos || []), ...(currentGroup.value.groupAudios || [])])
-        return ids.has(c.id)
-      })
-      const cursor = groupClips.length > 0 ? Math.max(...groupClips.map(c => c.end)) : (currentGroup.value.cardStart || 0)
-      const clip = {
-        id: genId(), type: m.type, material_id: m.id,
-        content: m.content, filepath: m.filepath,
-        start: cursor, end: cursor + frames, frameCount: frames,
-        offsetL: 0, offsetR: 0,
-        centerX: 50, centerY: 50, scale: 100,
-        width: m.frame_width || 1920, height: m.frame_height || 1080,
-        fontSize: 48, fontFamily: 'sans-serif', fontColor: '#ffffff',
-        bold: false, italic: false, shadow: false, outline: false,
-        outlineColor: '#000000', bgColor: '#000000', bgEnabled: false,
-        textAlign: 'center', effect: '', transitionIn: null,
-      }
-      groupTrack.value.list.push(clip)
-      currentGroup.value.groupVideos.push(clip.id)
-      updateTotalFrames()
-    }
-
-    const addToGroupAudios = (m) => {
-      if (!currentGroup.value) return
-      const frames = 300
-      const groupClips = groupTrack.value.list.filter(c => {
-        const ids = new Set([...(currentGroup.value.groupVideos || []), ...(currentGroup.value.groupAudios || [])])
-        return ids.has(c.id)
-      })
-      const cursor = groupClips.length > 0 ? Math.max(...groupClips.map(c => c.end)) : (currentGroup.value.cardStart || 0)
-      const clip = {
-        id: genId(), type: 'audio', material_id: m.id,
-        content: m.content, filepath: m.filepath,
-        start: cursor, end: cursor + frames, frameCount: frames,
-        offsetL: 0, offsetR: 0,
-        centerX: 50, centerY: 50, scale: 100,
-        width: m.frame_width || 1920, height: m.frame_height || 1080,
-        fontSize: 48, fontFamily: 'sans-serif', fontColor: '#ffffff',
-        bold: false, italic: false, shadow: false, outline: false,
-        outlineColor: '#000000', bgColor: '#000000', bgEnabled: false,
-        textAlign: 'center', effect: '', transitionIn: null,
-      }
-      groupTrack.value.list.push(clip)
-      currentGroup.value.groupAudios.push(clip.id)
-      updateTotalFrames()
-    }
-
-    const removeFromGroupList = (listType, idx) => {
-      if (!currentGroup.value || !groupTrack.value) return
-      const list = listType === 'video' ? currentGroup.value.groupVideos : currentGroup.value.groupAudios
-      const clipId = list[idx]
-      if (clipId != null) {
-        const ci = groupTrack.value.list.findIndex(c => c.id === clipId)
-        if (ci >= 0) groupTrack.value.list.splice(ci, 1)
-        list.splice(idx, 1)
-      }
-      updateTotalFrames()
-    }
-
-    const onGroupVideoDrop = (ev) => {
-      ev.preventDefault()
-      if (!dragData || !currentGroup.value) return
-      if (dragData.type === 'video' || dragData.type === 'image') {
-        addToGroupVideos(dragData)
-        dragData = null
-      }
-    }
-
-    const onGroupAudioDrop = (ev) => {
-      ev.preventDefault()
-      if (!dragData || !currentGroup.value) return
-      if (dragData.type === 'audio') {
-        addToGroupAudios(dragData)
-        dragData = null
-      }
-    }
-
-    const onGroupCardDrop = async (ev, li, gi) => {
-      ev.preventDefault()
-      if (!dragData) return
-      const track = trackLines.value[li]
-      if (!track || !track.groups[gi]) return
-      selectLine.value = li
-      selectGroupIndex.value = gi
-      selectIndex.value = -1
-
-      // Track clip drag: create segment via API, then add to group
-      if (dragData._fromTrack) {
-        const sourceLine = trackLines.value[dragData._sourceLine]
-        if (!sourceLine) { dragData = null; return }
-        const sourceClip = sourceLine.list[dragData._sourceIndex]
-        if (!sourceClip || !sourceClip.material_id) { dragData = null; return }
-        try {
-          const res = await materialApi.createFromSegment(
-            sourceClip.material_id,
-            sourceClip.start,
-            sourceClip.end
-          )
-          const newMat = res.data
-          addToGroupVideos(newMat)
-          sourceLine.list.splice(dragData._sourceIndex, 1)
-          updateTotalFrames()
-          toast.success('已切割并添加到素材组')
-        } catch (e) {
-          toast.error('切割失败: ' + (e.response?.data?.detail || e.message))
-        }
-        dragData = null
-        return
-      }
-
-      // Panel material drag
-      if (dragData.type === 'video' || dragData.type === 'image') {
-        addToGroupVideos(dragData)
-      } else if (dragData.type === 'audio') {
-        addToGroupAudios(dragData)
-      }
-      dragData = null
-    }
-
-    const getClipById = (clipId) => {
-      if (!groupTrack.value) return null
-      return groupTrack.value.list.find(c => c.id === clipId) || null
-    }
-
-    // Apply effect to all clips in the current group
-    const applyGroupEffect = (key) => {
-      if (!currentGroup.value || !groupTrack.value) return
-      currentGroup.value.effect = key
-      const ids = new Set([...(currentGroup.value.groupVideos || []), ...(currentGroup.value.groupAudios || [])])
-      for (const clip of groupTrack.value.list) {
-        if (ids.has(clip.id)) clip.effect = key
-      }
-      drawToCanvas(false)
-    }
-
-    // Apply transition to the current group (applied to all clips in the group)
-    const setGroupTransition = (preset) => {
-      if (!currentGroup.value || !groupTrack.value) return
-      if (preset.key) {
-        currentGroup.value.transitionIn = { key: preset.key, type: preset.type, duration: preset.duration || 15, direction: preset.key.replace(/wipe/, '') || 'left' }
-      } else {
-        currentGroup.value.transitionIn = null
-      }
-      const ids = new Set([...(currentGroup.value.groupVideos || []), ...(currentGroup.value.groupAudios || [])])
-      for (const clip of groupTrack.value.list) {
-        if (ids.has(clip.id)) clip.transitionIn = currentGroup.value.transitionIn ? { ...currentGroup.value.transitionIn } : null
-      }
-      drawToCanvas(false)
-    }
-
-    // Compute position/size of a sub-group card on the timeline
-    const getGroupCardStyle = (g, line) => {
-      const clipIds = new Set([...(g.groupVideos || []), ...(g.groupAudios || [])])
-      const sorted = line.list.filter(c => clipIds.has(c.id)).sort((a, b) => a.start - b.start)
-      const dur = sorted.length > 0 ? sorted[0].end - sorted[0].start : 120
-      const left = g.cardStart || 0
-      return {
-        width: getGridPixel(trackScale.value, dur) + 'px',
-        left: getGridPixel(trackScale.value, left) + 'px',
-      }
-    }
-
-    // Find a clip by ID in a specific track line
-    const getGroupLineClip = (line, clipId) => {
-      if (!line || !clipId) return null
-      return line.list.find(c => c.id === clipId) || null
-    }
-
-    // Style for a clip displayed in group sub-lanes (video/audio)
-    const getGroupSubClipStyle = (line, clipId, cardStart) => {
-      const clip = getGroupLineClip(line, clipId)
-      const dur = clip ? clip.end - clip.start : 120
-      const left = cardStart || 0
-      return {
-        width: getGridPixel(trackScale.value, dur) + 'px',
-        left: getGridPixel(trackScale.value, left) + 'px',
-      }
-    }
-
-    const onGroupTrackDrop = async (ev, li) => {
-      ev.preventDefault()
-      ev.stopPropagation()
-      if (!dragData) return
-      const track = trackLines.value[li]
-      if (!track || !track.groups || track.groups.length === 0) return
-      let gi = selectGroupIndex.value
-      if (gi < 0 || gi >= track.groups.length) gi = 0
-      selectLine.value = li
-      selectGroupIndex.value = gi
-      selectIndex.value = -1
-
-      // Track clip drag: create segment via API, then add to group
-      if (dragData._fromTrack) {
-        const sourceLine = trackLines.value[dragData._sourceLine]
-        if (!sourceLine) { dragData = null; return }
-        const sourceClip = sourceLine.list[dragData._sourceIndex]
-        if (!sourceClip || !sourceClip.material_id) { dragData = null; return }
-        try {
-          const res = await materialApi.createFromSegment(
-            sourceClip.material_id,
-            sourceClip.start,
-            sourceClip.end
-          )
-          const newMat = res.data
-          addToGroupVideos(newMat)
-          sourceLine.list.splice(dragData._sourceIndex, 1)
-          updateTotalFrames()
-          toast.success('已切割并添加到素材组')
-        } catch (e) {
-          toast.error('切割失败: ' + (e.response?.data?.detail || e.message))
-        }
-        dragData = null
-        return
-      }
-
-      // Panel material drag
-      if (dragData.type === 'video' || dragData.type === 'image') {
-        addToGroupVideos(dragData)
-      } else if (dragData.type === 'audio') {
-        addToGroupAudios(dragData)
-      }
-      dragData = null
-    }
-
-    const getGroupCardDuration = (g, line) => {
-      const clipIds = new Set([...(g.groupVideos || []), ...(g.groupAudios || [])])
-      const sorted = line.list.filter(c => clipIds.has(c.id)).sort((a, b) => a.start - b.start)
-      return sorted.length > 0 ? sorted[0].end - sorted[0].start : 120
-    }
-
-    // ── Group card drag (reposition all clips in sub-group) ──
-    let groupMoveState = null
-    const onGroupCardMouseDown = (ev, li, gi) => {
-      if (ev.button !== 0) return
-      const track = trackLines.value[li]
-      if (!track || track.locked) return
-      const g = track.groups[gi]
-      if (!g) return
-      const clipIds = new Set([...(g.groupVideos || []), ...(g.groupAudios || [])])
-      const origPositions = track.list
-        .filter(c => clipIds.has(c.id))
-        .map(c => ({ clip: c, start: c.start, end: c.end }))
-      if (origPositions.length === 0) {
-        // No clips: just track cardStart delta for empty group
-        groupMoveState = { li, gi, startX: ev.clientX, origCardStart: g.cardStart || 0, origPositions: [] }
-      } else {
-        groupMoveState = { li, gi, startX: ev.clientX, origPositions, origCardStart: g.cardStart || 0 }
-      }
-      document.addEventListener('mousemove', onGroupMoveMove)
-      document.addEventListener('mouseup', onGroupMoveEnd)
-    }
-    const onGroupMoveMove = (ev) => {
-      if (!groupMoveState) return
-      const dx = ev.clientX - groupMoveState.startX
-      const frameDelta = Math.round(dx / Math.max(getGridPixel(trackScale.value, 1), 1))
-      for (const { clip, start, end } of groupMoveState.origPositions) {
-        clip.start = Math.max(0, start + frameDelta)
-        clip.end = end + frameDelta
-      }
-      // Update cardStart so the card follows the drag
-      const track = trackLines.value[groupMoveState.li]
-      if (track && track.groups[groupMoveState.gi]) {
-        track.groups[groupMoveState.gi].cardStart = Math.max(0, groupMoveState.origCardStart + frameDelta)
-      }
-      updateTotalFrames()
-    }
-    const onGroupMoveEnd = () => {
-      groupMoveState = null
-      document.removeEventListener('mousemove', onGroupMoveMove)
-      document.removeEventListener('mouseup', onGroupMoveEnd)
     }
 
     // ── Trim handlers ──
@@ -1699,26 +1309,6 @@ export default {
       dragData = m
       ev.dataTransfer.effectAllowed = 'copy'
       ev.dataTransfer.setData('text/plain', m.id + '')
-    }
-
-    // ── Track clip drag to group cards ──
-    const onClipDragStart = (ev, li, ci) => {
-      const track = trackLines.value[li]
-      if (!track || track.locked || track.type === 'group') return
-      const clip = track.list[ci]
-      if (!clip || !clip.material_id) return
-      moveState = null
-      dragData = {
-        _fromTrack: true,
-        _sourceLine: li,
-        _sourceIndex: ci,
-        type: clip.type,
-        material_id: clip.material_id,
-        start: clip.start,
-        end: clip.end,
-      }
-      ev.dataTransfer.effectAllowed = 'move'
-      ev.dataTransfer.setData('text/plain', clip.id)
     }
 
     const onTrackDragOver = (ev) => {
@@ -1767,7 +1357,11 @@ export default {
       let targetLine = trackLines.value.find(l => l.type === m.type && !l.locked)
       if (!targetLine) {
         targetLine = makeTrack(m.type)
-        trackLines.value.splice(getTrackInsertIndex(m.type), 0, targetLine)
+        if (m.type === 'video' || m.type === 'audio') {
+          trackLines.value.push(targetLine)
+        } else {
+          trackLines.value.unshift(targetLine)
+        }
       }
       targetLine.list.push(clip)
       selectLine.value = trackLines.value.indexOf(targetLine)
@@ -1893,44 +1487,25 @@ export default {
       saving.value = true
       try {
         // Serialize full track data as JSON
-        const trackData = trackLines.value.map(line => {
-          const track = {
-            name: line.name,
-            type: line.type,
-            visible: line.visible,
-            muted: line.muted,
-            list: line.list.map(c => ({
-              id: c.id, type: c.type, material_id: c.material_id,
-              content: c.content, filepath: c.filepath,
-              start: c.start, end: c.end, frameCount: c.frameCount,
-              offsetL: c.offsetL, offsetR: c.offsetR,
-              centerX: c.centerX, centerY: c.centerY,
-              scale: c.scale, width: c.width, height: c.height,
-              fontSize: c.fontSize, fontFamily: c.fontFamily, fontColor: c.fontColor,
-              bold: c.bold, italic: c.italic, shadow: c.shadow,
-              outline: c.outline, outlineColor: c.outlineColor,
-              bgColor: c.bgColor, bgEnabled: c.bgEnabled, textAlign: c.textAlign,
-              effect: c.effect, transitionIn: c.transitionIn,
-            }))
-          }
-          if (line.type === 'group') {
-            track.groups = (line.groups || []).map(g => ({
-              name: g.name,
-              groupVideos: g.groupVideos || [],
-              groupAudios: g.groupAudios || [],
-              cardStart: g.cardStart || 0,
-              effect: g.effect || '',
-              transitionIn: g.transitionIn || null,
-            }))
-            if (line.subLanes) {
-              track.subLanes = {
-                video: { ...line.subLanes.video },
-                audio: { ...line.subLanes.audio },
-              }
-            }
-          }
-          return track
-        })
+        const trackData = trackLines.value.map(line => ({
+          name: line.name,
+          type: line.type,
+          visible: line.visible,
+          muted: line.muted,
+          list: line.list.map(c => ({
+            id: c.id, type: c.type, material_id: c.material_id,
+            content: c.content, filepath: c.filepath,
+            start: c.start, end: c.end, frameCount: c.frameCount,
+            offsetL: c.offsetL, offsetR: c.offsetR,
+            centerX: c.centerX, centerY: c.centerY,
+            scale: c.scale, width: c.width, height: c.height,
+            fontSize: c.fontSize, fontFamily: c.fontFamily, fontColor: c.fontColor,
+            bold: c.bold, italic: c.italic, shadow: c.shadow,
+            outline: c.outline, outlineColor: c.outlineColor,
+            bgColor: c.bgColor, bgEnabled: c.bgEnabled, textAlign: c.textAlign,
+            effect: c.effect, transitionIn: c.transitionIn,
+          }))
+        }))
         const payload = {
           title: form.value.title.trim(),
           script: form.value.script || '',
@@ -1944,7 +1519,7 @@ export default {
         } else {
           const res = await generatedApi.create(payload)
           toast.success('创建成功')
-          router.replace({ name: 'MashupEditor', params: { id: res.data.id } })
+          router.replace({ name: 'MashupManyEditor', params: { id: res.data.id } })
         }
       } catch (e) {
         toast.error('保存失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
@@ -1954,18 +1529,10 @@ export default {
     // ── Generate ──
     const generate = async () => {
       if (!isEditMode.value) return
-      // Check for group tracks with sub-groups
-      const hasGroups = trackLines.value.some(l => l.type === 'group' && l.groups && l.groups.length > 0)
       generating.value = true
       try {
-        if (hasGroups) {
-          const res = await generatedApi.batchGenerateGroups(editId.value)
-          const count = res.data?.count || 0
-          toast.success(`批量合成完成，共生成 ${count} 条视频`)
-        } else {
-          await generatedApi.generate(editId.value, editVoice.value || undefined)
-          toast.success('合成完成')
-        }
+        await generatedApi.generate(editId.value, editVoice.value || undefined)
+        toast.success('合成完成')
       } catch (e) {
         toast.error('合成失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
       } finally { generating.value = false }
@@ -2165,15 +1732,6 @@ export default {
             visible: t.visible !== false,
             locked: t.locked || false,
             muted: t.muted || false,
-            groups: (t.groups || []).map(g => ({
-              name: g.name || '',
-              groupVideos: g.groupVideos || [],
-              groupAudios: g.groupAudios || [],
-              cardStart: g.cardStart || 0,
-              effect: g.effect || '',
-              transitionIn: g.transitionIn || null,
-            })),
-            subLanes: t.subLanes || { video: { visible: true, locked: false, muted: false }, audio: { visible: true, locked: false, muted: false } },
           }))
           updateTotalFrames()
         } else {
@@ -2218,19 +1776,12 @@ export default {
       document.removeEventListener('mouseup', endTrim)
       document.removeEventListener('mousemove', onMoveMove)
       document.removeEventListener('mouseup', endMove)
-      document.removeEventListener('mousemove', onGroupMoveMove)
-      document.removeEventListener('mouseup', onGroupMoveEnd)
       document.removeEventListener('mousemove', onCanvasMouseMove)
       document.removeEventListener('mouseup', onCanvasMouseUp)
       if (resizeObserver) resizeObserver.disconnect()
     })
 
     watch(trackScale, () => { nextTick(drawRuler) })
-    watch(groupTrack, (gt) => {
-      if (gt && gt.groups && gt.groups.length > 0 && selectGroupIndex.value < 0) {
-        selectGroupIndex.value = 0
-      }
-    })
     watch(previewItem, () => { nextTick(() => drawToCanvas(false)) }, { immediate: true })
     watch(playStartFrame, () => { drawToCanvas(false); drawRuler() })
     watch([playerZoom, playerRatioIndex], () => { nextTick(resizeCanvas) })
@@ -2303,14 +1854,9 @@ export default {
       getClipStyle, playheadLeft, trackHeightClass, trackTypeName,
       trackIconComp, typeLabel,
       addToTimeline, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, splitClip,
-      hasAudioTracks: canExtractSubtitles, extractingSubtitles, extractSubtitles, addGroupToTrack,
-      groupTrack, selectGroupIndex, currentGroup, getGroupCardStyle,
-      addToGroupVideos, addToGroupAudios, removeFromGroupList,
-      onGroupVideoDrop, onGroupAudioDrop, getClipById,
-      applyGroupEffect, setGroupTransition,
-      getGroupLineClip, getGroupSubClipStyle,
-      startTrim, onResourceDragStart, onClipDragStart, onTrackDragOver, onTrackDrop,
-      onClipMouseDown, onGroupCardMouseDown, onGroupCardDrop, onGroupTrackDrop,
+      hasAudioTracks: canExtractSubtitles, extractingSubtitles, extractSubtitles,
+      startTrim, onResourceDragStart, onTrackDragOver, onTrackDrop,
+      onClipMouseDown,
       changeScale, togglePlay, formatFrame,
       startAttrResize, startTrackResize,
       onTrackScroll, onTimelineSeek,

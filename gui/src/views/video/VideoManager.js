@@ -1,5 +1,5 @@
 import { ref, computed, onMounted, watch } from 'vue'
-import { videoApi, materialApi, folderApi, downloadApi, agentApi } from '../../api/index.js'
+import { videoApi, materialApi, folderApi, downloadApi, agentApi, exportApi } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 import { useFolders } from '../../composables/useFolders.js'
 import Pagination from '../../components/Pagination.vue'
@@ -57,6 +57,35 @@ export default {
         toast.error('批量删除失败')
       }
     }
+
+    const exporting = ref(false)
+    const doExport = async (ids) => {
+      if (ids.length === 0) return
+      let destDir = ''
+      if (window.electronAPI && window.electronAPI.selectDirectory) {
+        destDir = await window.electronAPI.selectDirectory()
+        if (!destDir) return
+      } else {
+        toast.warning('当前环境不支持选择目录')
+        return
+      }
+      exporting.value = true
+      try {
+        const res = await exportApi.exportFiles({ video_ids: ids, dest_dir: destDir })
+        const d = res.data
+        if (d.errors && d.errors.length > 0) {
+          toast.warning(`导出完成：成功 ${d.copied} 个，失败 ${d.errors.length} 个`)
+        } else {
+          toast.success(`已导出 ${d.copied} 个视频到 ${destDir}`)
+        }
+      } catch (e) {
+        toast.error('导出失败: ' + (e.response?.data?.detail || e.message))
+      } finally {
+        exporting.value = false
+      }
+    }
+    const exportSelected = () => doExport([...selectedIds.value])
+    const exportItem = (id) => doExport([id])
 
     // Move to folder dialog
     const showMoveDialog = ref(false)
@@ -913,6 +942,7 @@ export default {
       showSplit, splitStarted, splitState, splitSteps, splitDoing, splitDoingText, splitError,
       splitMaterials, splitVideoRef, openSplit, startSplitAnalysis, closeSplit, deleteSplitMaterial,
       selectedIds, isAllSelected, viewMode, toggleSelect, toggleSelectAll, clearSelection, truncateFilename, batchDeleteVideos,
+      exporting, exportSelected, exportItem,
       splitMode, splitExtractText, splitRemoveAudio, manualVideoEl, splitCurrentTime, videoDuration, splitPoints, splitSegments,
       manualTimelineEl, formatSplitTime, onManualLoaded, onManualTimeUpdate, onTimelineClick,
       addSplitPoint, removeSplitPoint, removeSegmentSplit, clearSplitPoints, startManualCut,

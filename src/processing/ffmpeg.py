@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from moviepy import ImageClip, VideoFileClip, concatenate_videoclips
@@ -12,7 +13,7 @@ from src.logger import default_logger as logger
 from src.utils import ensure_date_dir
 
 # ── 音频相关 ──
-ffmpeg_prefix = f"{BASE_DIR}/bin/"
+ffmpeg_prefix = ""
 
 
 def extract_audio(video_path: str, audio_path: str | None = None) -> str:
@@ -432,18 +433,28 @@ def concat_videos(
 # ── 字幕压制 ──
 
 def composite_subtitles(video_path: str, srt_path: str, output_path: str | None = None) -> str:
-    """使用 ffmpeg 将字幕压制到视频中。"""
+    """使用 ffmpeg 将字幕压制到视频中（支持 ASS 格式含字体样式）。"""
+    import shutil
     video_path = Path(video_path)
     if output_path is None:
         output_path = str(ensure_date_dir(get_config("mixed_dir"), f"{video_path.stem}_subtitled{video_path.suffix}"))
 
-    srt_filter_path = str(Path(srt_path).as_posix())
+    # 把字幕文件复制到输出目录，用纯文件名传给 ffmpeg，避开 Windows 盘符冒号问题
+    out_dir = Path(output_path).parent
+    sub_dest = out_dir / Path(srt_path).name
+    if str(sub_dest.resolve()) != str(Path(srt_path).resolve()):
+        shutil.copy2(srt_path, sub_dest)
 
+    sub_name = sub_dest.name
+    if sub_name.endswith('.ass'):
+        vf = f"ass={sub_name}"
+    else:
+        vf = f"subtitles={sub_name}"
     cmd = [
         f"{ffmpeg_prefix}ffmpeg", "-i", str(video_path),
-        "-vf", f"subtitles={srt_filter_path}:force_style='FontName=Noto Sans SC,FontSize=18,Alignment=2'",
+        "-vf", vf,
         "-c:a", "copy",
         "-y", str(output_path),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    subprocess.run(cmd, check=True, capture_output=True, cwd=str(out_dir))
     return output_path

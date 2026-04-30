@@ -60,7 +60,7 @@ class VectorStore:
 
     def add_material(self, material_id: int, content: str, metadata: dict | None = None):
         """将素材添加到向量存储。"""
-        self.collection.add(
+        self.collection.upsert(
             ids=[str(material_id)],
             documents=[content],
             metadatas=[metadata or {}],
@@ -73,7 +73,7 @@ class VectorStore:
         total = len(items)
         for i in range(0, total, batch_size):
             batch = items[i : i + batch_size]
-            self.collection.add(
+            self.collection.upsert(
                 ids=[str(item[0]) for item in batch],
                 documents=[item[1] for item in batch],
                 metadatas=[item[2] for item in batch],

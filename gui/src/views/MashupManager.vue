@@ -3,8 +3,8 @@
     <div class="view-header">
       <h2>混剪视频管理</h2>
       <div class="header-actions">
-        <button class="btn btn-primary" @click="openCreate">手动混剪</button>
-        <button class="btn btn-info" @click="openAuto">自动混剪</button>
+        <button class="btn btn-primary" @click="openCreate">手动剪辑</button>
+        <button class="btn btn-info" @click="openAuto">智能混剪</button>
       </div>
     </div>
 
@@ -102,10 +102,10 @@
       </div>
     </div>
 
-    <!-- 自动混剪弹窗 -->
+    <!-- 智能混剪弹窗 -->
     <div v-if="showAutoDialog" class="modal-overlay" @click.self="closeAuto">
       <div class="modal">
-        <h3>自动混剪</h3>
+        <h3>智能混剪</h3>
         <p class="modal-desc">输入标题和描述，LLM 将自动扩写脚本、检索素材、拼接并配音生成混剪视频。</p>
         <div class="form">
           <label>标题
@@ -336,7 +336,7 @@ export default {
         closeAuto()
         loadList()
       } catch (e) {
-        toast.error('自动混剪失败: ' + (e.response?.data?.detail || e.message))
+        toast.error('智能混剪失败: ' + (e.response?.data?.detail || e.message))
       } finally {
         autoProcessing.value = false
       }

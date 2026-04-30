@@ -231,13 +231,9 @@ def update_material(material_id: int, data: MaterialUpdate, db: Session = Depend
     db.refresh(m)
 
     # 更新向量数据库
-    try:
-        _get_vector_store().delete_material(material_id)
-    except Exception:
-        pass
     if m.content:
         try:
-            _get_vector_store().add_material(m.id, m.content, {
+            _get_vector_store().add_material(material_id, m.content, {
                 "type": m.type,
                 "start_time": m.start_time,
                 "end_time": m.end_time,
@@ -325,3 +321,82 @@ def get_material_file(material_id: int, db: Session = Depends(get_db)):
     if not m.filepath or not Path(m.filepath).exists():
         raise HTTPException(404, "文件不存在")
     return FileResponse(m.filepath)
+
+
+@router.post("/from-segment", status_code=201)
+def create_material_from_segment(
+    source_id: int = Form(...),
+    start_frame: float = Form(0),
+    end_frame: float = Form(0),
+    db: Session = Depends(get_db),
+):
+    """从已有视频素材裁剪片段，生成新的 status=0 素材。"""
+    import subprocess
+    from src.processing.ffmpeg import ffmpeg_prefix as ff
+
+    source = db.query(Material).get(source_id)
+    if not source or not source.filepath or not Path(source.filepath).exists():
+        raise HTTPException(404, "源素材不存在")
+
+    if end_frame <= start_frame:
+        raise HTTPException(400, "end_frame 必须大于 start_frame")
+
+    fps = source.frame_rate or 30
+    start_sec = start_frame / fps
+    dur_sec = (end_frame - start_frame) / fps
+
+    out_dir = ensure_date_dir(get_config("material_dir"))
+    out_name = f"seg_{source.id}_{uuid.uuid4().hex[:8]}.mp4"
+    out_path = str(Path(out_dir) / out_name)
+
+    cmd = [
+        f"{ff}ffmpeg", "-y",
+        "-ss", f"{start_sec:.3f}",
+        "-i", str(source.filepath),
+        "-t", f"{dur_sec:.3f}",
+        "-c:v", "libx264", "-crf", "18",
+        "-c:a", "aac",
+        "-pix_fmt", "yuv420p",
+        "-avoid_negative_ts", "make_zero",
+        out_path,
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(500, f"裁剪失败: {e.stderr[-200:] if e.stderr else ''}")
+
+    if not Path(out_path).exists() or Path(out_path).stat().st_size == 0:
+        raise HTTPException(500, "裁剪输出为空")
+
+    thumb = generate_thumbnail(out_path)
+
+    seg = Material(
+        type="video",
+        content=f"{source.content or source.filename} [{start_frame:.0f}-{end_frame:.0f}]",
+        filename=out_name,
+        filepath=out_path,
+        start_time=0.0,
+        end_time=dur_sec,
+        frame_width=source.frame_width,
+        frame_height=source.frame_height,
+        frame_rate=fps,
+        thumbnail=thumb,
+        status=0,  # cached/temp
+        folder_id=source.folder_id,
+    )
+    db.add(seg)
+    db.commit()
+    db.refresh(seg)
+
+    return {
+        "id": seg.id,
+        "type": seg.type,
+        "content": seg.content,
+        "filename": seg.filename,
+        "filepath": seg.filepath,
+        "frame_width": seg.frame_width,
+        "frame_height": seg.frame_height,
+        "duration": dur_sec,
+        "status": seg.status,
+        "thumbnail": thumb_url(seg.thumbnail),
+    }

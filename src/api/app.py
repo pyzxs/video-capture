@@ -63,6 +63,10 @@ def create_app() -> FastAPI:
         db = SessionLocal()
         default_logger.info("启动startup")
         try:
+            # 自动注册 CMS 用户（首次启动时）
+            from src.auth import get_or_register
+            get_or_register()
+
             # 如果 settings 表为空，从 config.enc 导入初始配置
             if db.query(Setting).count() == 0:
                 _import_config_to_db(db)
@@ -86,9 +90,7 @@ def create_app() -> FastAPI:
         from src.services.agents import ensure_default_agents
         ensure_default_agents()
 
-        # 自动注册 CMS 用户（首次启动时）
-        from src.auth import get_or_register
-        get_or_register()
+
 
     def _import_config_to_db(db):
         """将 config.enc 中的配置导入到 settings 表（仅在首次启动时调用）。"""

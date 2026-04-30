@@ -26,6 +26,7 @@ def transcribe(audio_path: str, language: str = "zh") -> list[dict]:
 
     每个片段字典包含：start, end, text。
     """
+    print("转录返回: {}".format(audio_path))
     model = get_asr_model()
     result = model.transcribe(audio_path, language=language, fp16=False)
 
