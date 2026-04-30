@@ -457,4 +457,150 @@ def composite_subtitles(video_path: str, srt_path: str, output_path: str | None 
         "-y", str(output_path),
     ]
     subprocess.run(cmd, check=True, capture_output=True, cwd=str(out_dir))
+    return str(output_path)
+
+
+# ── 视频特效 ──
+
+EFFECT_FILTERS = {
+    'gray':      'hue=s=0',
+    'sepia':     'colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131',
+    'bright':    'eq=brightness=0.3',
+    'dark':      'eq=brightness=-0.4',
+    'hcontrast': 'eq=contrast=1.6:saturation=1.1',
+    'saturate':  'eq=saturation=2.0',
+    'desat':     'eq=saturation=0.3',
+    'vintage':   'colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131,eq=contrast=1.1:saturation=0.8',
+    'cool':      'eq=saturation=1.2,hue=h=180',
+    'warm':      'eq=saturation=1.4,hue=h=-30',
+    'blur':      'gblur=sigma=4',
+    'noir':      'hue=s=0,eq=contrast=1.4:brightness=-0.15',
+    'dramatic':  'eq=contrast=1.6:brightness=-0.1:saturation=1.3',
+    'soft':      'eq=brightness=0.1:contrast=0.9:saturation=0.9,gblur=sigma=0.5',
+    'invert':    'negate',
+    'pastel':    'eq=saturation=0.7:brightness=0.15:contrast=0.9',
+    'neon':      'eq=brightness=0.2:contrast=1.5:saturation=2.5',
+    'edgeglow':  'eq=brightness=0.08:contrast=1.05',
+}
+
+XFADE_MAP = {
+    'crossfade':  'fade',
+    'fadeblack':  'fadeblack',
+    'fadewhite':  'fadewhite',
+    'wipeleft':   'wipeleft',
+    'wiperight':  'wiperight',
+    'wipeup':     'wipeup',
+    'wipedown':   'wipedown',
+    'radial':     'radial',
+    'zoomblur':   'zoomin',
+    'pagecurl':   'fade',
+    'shutter':    'horzopen',
+}
+
+
+def apply_video_effect(input_path: str, effect_key: str, output_path: str | None = None) -> str:
+    """对视频应用特效（颜色调整、模糊等），返回输出路径。"""
+    filter_str = EFFECT_FILTERS.get(effect_key)
+    if not filter_str:
+        if output_path:
+            import shutil
+            shutil.copy2(input_path, output_path)
+            return output_path
+        return input_path
+
+    input_path = Path(input_path)
+    if output_path is None:
+        output_path = str(input_path.parent / f"{input_path.stem}_fx{input_path.suffix}")
+
+    cmd = [
+        f"{ffmpeg_prefix}ffmpeg", "-y",
+        "-i", str(input_path),
+        "-vf", filter_str,
+        "-c:a", "copy",
+        str(output_path),
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return str(output_path)
+
+
+def concat_with_xfade(
+    segment_paths: list[str],
+    transitions: list[dict],
+    output_path: str,
+    target_width: int | None = None,
+    target_height: int | None = None,
+) -> str:
+    """使用 xfade 滤镜将多个视频片段按转场拼接。
+
+    transitions: 长度 = len(segment_paths) - 1，每个元素为 {key, duration} 或 None（无转场）
+    """
+    import shutil
+
+    n = len(segment_paths)
+    if n == 0:
+        raise ValueError("没有视频片段可供拼接")
+    if n == 1:
+        shutil.copy2(segment_paths[0], output_path)
+        return output_path
+
+    # Build xfade filter chain
+    filter_parts = []
+    prev_label = "0:v"
+
+    # Probe each segment for duration
+    durations = []
+    for sp in segment_paths:
+        try:
+            probe = subprocess.run(
+                [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", str(sp)],
+                capture_output=True, text=True, timeout=10,
+            )
+            durations.append(float(probe.stdout.strip()) if probe.stdout.strip() else 3.0)
+        except Exception:
+            durations.append(3.0)
+
+    # Scale filter if target dimensions are set
+    scale_filter = ""
+    if target_width and target_height:
+        scale_filter = f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,"
+
+    # Build input labels and chain
+    for i in range(n):
+        filter_parts.append(f"[{i}:v]{scale_filter}setpts=PTS-STARTPTS,fps=30[v{i}]")
+
+    accum_dur = 0.0
+    for i in range(n - 1):
+        trans = transitions[i] if i < len(transitions) else None
+        t_key = trans.get("key", "") if trans else ""
+        t_dur = (trans.get("duration", 15) or 15) if trans else 15
+        xfade_name = XFADE_MAP.get(t_key, "fade")
+        dur_sec = max(0.1, t_dur / 30.0)  # frames to seconds
+
+        # Offset: start of second segment minus transition duration
+        accum_dur += durations[i]
+        offset = max(0.0, accum_dur - dur_sec)
+
+        next_label = f"x{i}"
+        filter_parts.append(
+            f"[{prev_label.replace(':', '')}][v{i+1}]xfade=transition={xfade_name}:duration={dur_sec:.2f}:offset={offset:.2f}[{next_label}]"
+        )
+        prev_label = f"{next_label}"
+
+    filter_graph = ";".join(filter_parts)
+
+    # Build ffmpeg command
+    cmd = [f"{ffmpeg_prefix}ffmpeg", "-y"]
+    for sp in segment_paths:
+        cmd.extend(["-i", str(sp)])
+    cmd.extend(["-filter_complex", filter_graph])
+    cmd.extend(["-map", f"[{prev_label}]"])
+    # Try to include first segment's audio
+    cmd.extend(["-map", "0:a?"])
+    cmd.extend(["-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p"])
+    cmd.extend(["-c:a", "aac"])
+    cmd.append(str(output_path))
+
+    subprocess.run(cmd, check=True, capture_output=True)
+    return str(output_path)
     return output_path

@@ -501,9 +501,6 @@
                 <svg v-if="!extractingSubtitles" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 9.5h10M7 13h7M7 16.5h9"/></svg>
                 <span v-else class="tb-btn-loading"></span>
               </button>
-              <button class="tb-btn" @click="addGroupToTrack" title="添加素材组（视频+配音）到新轨道">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><line x1="12" y1="11" x2="12" y2="13"/></svg>
-              </button>
               <button class="tb-btn" @click="deleteSelected" :disabled="!canDeleteSelected" title="删除">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
@@ -516,6 +513,16 @@
               <div class="tb-sep"></div>
             </div>
             <div class="toolbar-right">
+              <button class="tb-btn" @click="addGroupToTrack" title="添加素材组（视频+配音）到新轨道">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><line x1="12" y1="11" x2="12" y2="13"/></svg>
+              </button>
+              <div class="tb-sep"></div>
+              <label class="subtitle-toggle" :class="{ disabled: !hasGroupTracks }" :title="hasGroupTracks ? '字幕显示开关' : '需要组轨道'" @click.stop>
+                <span class="subtitle-toggle-label">字幕</span>
+                <input type="checkbox" :checked="showSubtitles" :disabled="!hasGroupTracks" @change="toggleSubtitles" />
+                <span class="subtitle-toggle-track"></span>
+              </label>
+              <div class="tb-sep"></div>
               <button class="tb-btn" @click="changeScale(-10)" title="缩小">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
               </button>

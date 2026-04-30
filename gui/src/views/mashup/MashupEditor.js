@@ -138,6 +138,17 @@ export default {
     })
 
     const extractingSubtitles = ref(false)
+    const showSubtitles = ref(true)
+
+    const toggleSubtitles = () => {
+      if (!hasGroupTracks.value) return
+      showSubtitles.value = !showSubtitles.value
+      for (const line of trackLines.value) {
+        if (line.type === 'text') {
+          line.visible = showSubtitles.value
+        }
+      }
+    }
 
     const canDeleteTrack = computed(() => {
       if (selectLine.value < 0 || selectIndex.value >= 0) return false
@@ -1232,9 +1243,12 @@ export default {
         }
         // Remove the group
         line.groups.splice(selectGroupIndex.value, 1)
-        // If no groups left, remove the entire group track
+        // If no groups left, remove the entire group track, restore main track
         if (line.groups.length === 0) {
           trackLines.value.splice(selectLine.value, 1)
+          if (trackLines.value.length === 0) {
+            trackLines.value = [makeTrack('video', true)]
+          }
         }
         selectGroupIndex.value = -1
         selectIndex.value = -1
@@ -1276,6 +1290,10 @@ export default {
       if (!line || line.main) { toast.warning('不能删除主轨道'); return }
       if (line.locked) { toast.warning('请先解锁轨道'); return }
       trackLines.value.splice(selectLine.value, 1)
+      // If group track was removed and nothing left, restore main track
+      if (line.type === 'group' && trackLines.value.length === 0) {
+        trackLines.value = [makeTrack('video', true)]
+      }
       selectLine.value = -1
       selectIndex.value = -1
       updateTotalFrames()
@@ -1354,6 +1372,7 @@ export default {
         let targetLine = trackLines.value.find(l => l.type === 'text' && !l.locked)
         if (!targetLine) {
           targetLine = makeTrack('text')
+          targetLine.visible = showSubtitles.value
           trackLines.value.splice(getTrackInsertIndex('text'), 0, targetLine)
         }
 
@@ -1378,8 +1397,8 @@ export default {
       // Find or create group track
       let gt = trackLines.value.find(l => l.type === 'group')
       if (!gt) {
-        // Remove all other tracks; only the group track remains
-        trackLines.value = trackLines.value.filter(l => l.main)
+        // Remove all tracks; only the group track remains
+        trackLines.value = []
         gt = makeTrack('group')
         gt.groups = []
         gt.subLanes = { video: { visible: true, locked: false, muted: false }, audio: { visible: true, locked: false, muted: false } }
@@ -1776,7 +1795,8 @@ export default {
 
     const onTrackDrop = (ev) => {
       if (!dragData) return
-      const rect = trackRowsRef.value.getBoundingClientRect()
+      const scrollArea = trackRowsRef.value?.querySelector('.track-scroll-area')
+      const rect = scrollArea ? scrollArea.getBoundingClientRect() : trackRowsRef.value.getBoundingClientRect()
       const x = ev.clientX - rect.left + scrollLeft
       const startFrame = getSelectFrame(x, trackScale.value)
       const m = dragData
@@ -2353,6 +2373,7 @@ export default {
       trackIconComp, typeLabel,
       addToTimeline, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, canDeleteSelected, hasGroupTracks, splitClip,
       hasAudioTracks: canExtractSubtitles, extractingSubtitles, extractSubtitles, addGroupToTrack,
+      showSubtitles, toggleSubtitles,
       groupTrack, selectGroupIndex, currentGroup, getGroupCardStyle,
       addToGroupVideos, addToGroupAudios, removeFromGroupList,
       onGroupVideoDrop, onGroupAudioDrop, getClipById,

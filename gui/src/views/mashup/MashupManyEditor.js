@@ -137,6 +137,19 @@ export default {
     })
 
     const extractingSubtitles = ref(false)
+    const showSubtitles = ref(true)
+
+    const hasGroupTracks = computed(() => false)
+
+    const toggleSubtitles = () => {
+      if (!hasGroupTracks.value) return
+      showSubtitles.value = !showSubtitles.value
+      for (const line of trackLines.value) {
+        if (line.type === 'text') {
+          line.visible = showSubtitles.value
+        }
+      }
+    }
 
     const canDeleteTrack = computed(() => {
       if (selectLine.value < 0 || selectIndex.value >= 0) return false
@@ -1256,6 +1269,7 @@ export default {
         let targetLine = trackLines.value.find(l => l.type === 'text' && !l.locked)
         if (!targetLine) {
           targetLine = makeTrack('text')
+          targetLine.visible = showSubtitles.value
           trackLines.value.unshift(targetLine)
         }
 
@@ -1855,6 +1869,7 @@ export default {
       trackIconComp, typeLabel,
       addToTimeline, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, splitClip,
       hasAudioTracks: canExtractSubtitles, extractingSubtitles, extractSubtitles,
+      showSubtitles, toggleSubtitles, hasGroupTracks,
       startTrim, onResourceDragStart, onTrackDragOver, onTrackDrop,
       onClipMouseDown,
       changeScale, togglePlay, formatFrame,
