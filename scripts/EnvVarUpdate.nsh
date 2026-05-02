@@ -242,6 +242,7 @@ Function _EnvVarUpdate_StrStr
     StrLen $R3 $R0
     StrLen $R4 $R1
     IntCmp $R4 $R3 0 no_match match
+match:
     StrCpy $R5 0
     ${Do}
         StrCpy $R2 $R1 $R3 $R5
@@ -250,12 +251,14 @@ Function _EnvVarUpdate_StrStr
             ${ExitDo}
         ${EndIf}
         IntOp $R5 $R5 + 1
-        IntCmp $R5 $R4 0 loop done
+        IntCmp $R5 $R4 done loop done
+loop:
     ${Loop}
 done:
     ${If} $R5 == 1
         StrCpy $R0 $R2
     ${Else}
+no_match:
         StrCpy $R0 ""
     ${EndIf}
 
