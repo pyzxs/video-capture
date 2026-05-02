@@ -187,6 +187,7 @@ export default {
     const hiddenAudioRef = ref(null)
     const previewLoaded = ref(false)
     let loadedVideoId = null
+    let loadedAudioId = null
     let audioFromVideo = false  // true when hiddenVideoRef is the active audio source
     const imageCache = {}
     let resizeObserver = null
@@ -328,8 +329,23 @@ export default {
       const clips = []
       const textClips = []
       for (let t = trackLines.value.length - 1; t >= 0; t--) {
-        if (!trackLines.value[t].visible) continue
-        for (const clip of trackLines.value[t].list) {
+        const line = trackLines.value[t]
+        if (!line.visible) continue
+        if (line.type === 'group' && line.groups) {
+          // Group track: only render first video of active group, respecting sub-lane visibility
+          if (line.subLanes?.video?.visible === false) continue
+          for (const g of line.groups) {
+            const firstVidId = g.groupVideos?.[0]
+            if (!firstVidId) continue
+            const firstVid = line.list.find(c => c.id === firstVidId)
+            if (firstVid && f >= firstVid.start && f < firstVid.end) {
+              clips.push(firstVid)
+              break
+            }
+          }
+          continue
+        }
+        for (const clip of line.list) {
           if (f >= clip.start && f < clip.end) {
             if (clip.type === 'text') {
               textClips.push(clip)
@@ -618,20 +634,66 @@ export default {
       return null
     }
 
+    // Find the active group (and its track) at a given frame.
+    // Returns { track, group, gi, li } or null.
+    function findActiveGroup(frame) {
+      for (let li = 0; li < trackLines.value.length; li++) {
+        const line = trackLines.value[li]
+        if (line.type !== 'group' || !line.groups) continue
+        for (let gi = 0; gi < line.groups.length; gi++) {
+          const g = line.groups[gi]
+          // Determine group duration from first video
+          const firstVidId = g.groupVideos?.[0]
+          if (!firstVidId) continue
+          const firstVid = line.list.find(c => c.id === firstVidId)
+          if (!firstVid) continue
+          if (frame >= firstVid.start && frame < firstVid.end) {
+            return { track: line, group: g, gi, li }
+          }
+        }
+      }
+      return null
+    }
+
     // Find the best clip that carries audio at the given frame position.
-    // For group-track clips, skip audio if the group's first video has ended.
+    // For group tracks: only returns the first audio of the active group,
+    // or the first video's audio if no dedicated audio exists. Audio stops
+    // when the group's first video ends.
     function findAudioClip(frame) {
-      for (const line of trackLines.value) {
+      // Check group tracks first — only the first audio/video of each group plays
+      for (let li = 0; li < trackLines.value.length; li++) {
+        const line = trackLines.value[li]
         if (line.muted) continue
+        if (line.type === 'group' && line.groups) {
+          if (line.subLanes?.audio?.muted && line.subLanes?.video?.muted) continue
+          for (const g of line.groups) {
+            const firstVidId = g.groupVideos?.[0]
+            if (!firstVidId) continue
+            const firstVid = line.list.find(c => c.id === firstVidId)
+            if (!firstVid) continue
+            if (frame >= firstVid.start && frame < firstVid.end) {
+              // Audio stops when first video ends
+              // Try first dedicated audio
+              if (!line.subLanes?.audio?.muted) {
+                const firstAudId = g.groupAudios?.[0]
+                if (firstAudId) {
+                  const firstAud = line.list.find(c => c.id === firstAudId)
+                  if (firstAud) return firstAud
+                }
+              }
+              // Fall back to video audio (if video sub-lane not muted)
+              if (!line.subLanes?.video?.muted) {
+                return firstVid
+              }
+              // Both muted → silence
+              return null
+            }
+          }
+          continue // group tracks handled exclusively above
+        }
+        // Non-group tracks: original behaviour
         for (const clip of line.list) {
           if (frame >= clip.start && frame < clip.end && (clip.type === 'video' || clip.type === 'audio')) {
-            if (line.type === 'group' && line.groups) {
-              const g = findGroupForClip(line, clip.id)
-              if (g && g.groupVideos && g.groupVideos.length > 0) {
-                const firstVideo = line.list.find(c => c.id === g.groupVideos[0])
-                if (firstVideo && frame >= firstVideo.end) continue
-              }
-            }
             return clip
           }
         }
@@ -642,13 +704,17 @@ export default {
     // ── Playback (requestAnimationFrame) ──
     let playRaf = null
     const togglePlay = () => {
+      if (generating.value && !isPlaying.value) return
       if (isPlaying.value) {
         isPlaying.value = false
         if (playRaf) cancelAnimationFrame(playRaf)
         const video = hiddenVideoRef.value
-        if (video) { video.pause(); video.volume = 1 }
+        if (video) { video.pause(); video.volume = 1; video.src = '' }
         const audio = hiddenAudioRef.value
-        if (audio) audio.pause()
+        if (audio) { audio.pause(); audio.src = '' }
+        loadedVideoId = null
+        loadedAudioId = null
+        wasSilent = false
       } else {
         if (playStartFrame.value >= totalFrames.value) playStartFrame.value = 0
         isPlaying.value = true
@@ -715,6 +781,8 @@ export default {
         playRaf = requestAnimationFrame(playLoop)
       }
     }
+    // Track whether the last playLoop iteration was in a silent/muted region
+    let wasSilent = false
     function playLoop() {
       if (!isPlaying.value) return
       const audioClip = findAudioClip(playStartFrame.value)
@@ -722,17 +790,57 @@ export default {
       // overlapping tracks: image on track 1 + video on track 2, etc.)
       if (audioClip && audioClip.type === 'audio' && hiddenAudioRef.value) {
         const audioEl = hiddenAudioRef.value
-        // Only stop if media has loaded data AND is paused (not still loading)
-        if (audioEl.paused && !audioEl.ended && audioEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) { isPlaying.value = false; return }
+        // Transition from silent or source changed → reload the new audio source
+        if (wasSilent || audioClip.material_id !== loadedAudioId) {
+          wasSilent = false
+          loadedAudioId = audioClip.material_id
+          const lf = Math.max(0, playStartFrame.value - audioClip.start)
+          const seekTo = lf / 30
+          audioEl.pause()
+          audioEl.src = `/api/materials/${audioClip.material_id}/file`
+          const startAudio = () => {
+            audioEl.currentTime = seekTo
+            audioEl.play().catch(e => console.warn('Audio play error:', e))
+          }
+          if (audioEl.readyState >= HTMLMediaElement.HAVE_METADATA) {
+            startAudio()
+          } else {
+            audioEl.addEventListener('loadedmetadata', startAudio, { once: true })
+          }
+        } else if (audioEl.paused && !audioEl.ended && audioEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          // Same source, paused unexpectedly → genuine stall
+          isPlaying.value = false; return
+        }
         const clipFrame = Math.floor((audioEl.currentTime || 0) * 30)
         playStartFrame.value = audioClip.start + clipFrame
       } else if (audioClip && audioClip.type === 'video' && hiddenVideoRef.value) {
         const video = hiddenVideoRef.value
-        if (video.paused && !video.ended && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) { isPlaying.value = false; return }
+        // Transition from silent or source changed → reload the new video source
+        if (wasSilent || audioClip.material_id !== loadedVideoId) {
+          wasSilent = false
+          loadedVideoId = audioClip.material_id
+          const lf = Math.max(0, playStartFrame.value - audioClip.start)
+          const seekTo = lf / 30
+          video.pause()
+          video.src = `/api/materials/${audioClip.material_id}/file`
+          const startVideo = () => {
+            video.currentTime = seekTo
+            video.play().catch(e => console.warn('Video play error:', e))
+          }
+          if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+            startVideo()
+          } else {
+            video.addEventListener('loadedmetadata', startVideo, { once: true })
+          }
+        } else if (video.paused && !video.ended && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          // May still be starting — retry play, don't treat as stall
+          video.play().catch(() => {})
+        }
         const clipFrame = Math.floor((video.currentTime || 0) * 30)
         playStartFrame.value = audioClip.start + clipFrame
       } else {
         // Pause any media when on a muted/non-audio region
+        wasSilent = true
         if (hiddenAudioRef.value) hiddenAudioRef.value.pause()
         if (audioFromVideo && hiddenVideoRef.value) hiddenVideoRef.value.pause()
         playStartFrame.value++
@@ -759,6 +867,17 @@ export default {
     function findVideoClip(frame) {
       for (const line of trackLines.value) {
         if (!line.visible) continue
+        if (line.type === 'group' && line.groups) {
+          // Respect sub-lane video visibility
+          if (line.subLanes?.video?.visible === false) continue
+          for (const g of line.groups) {
+            const firstVidId = g.groupVideos?.[0]
+            if (!firstVidId) continue
+            const firstVid = line.list.find(c => c.id === firstVidId)
+            if (firstVid && frame >= firstVid.start && frame < firstVid.end) return firstVid
+          }
+          continue
+        }
         for (const clip of line.list) {
           if (frame >= clip.start && frame < clip.end && clip.type === 'video') return clip
         }
@@ -1060,41 +1179,18 @@ export default {
     ]
 
     // ── Track operations ──
-    const addToTimeline = (m) => {
-      // If a group track with a selected sub-group, add material to it
-      if (selectLine.value >= 0 && selectIndex.value < 0) {
-        const selTrack = trackLines.value[selectLine.value]
-        if (selTrack && selTrack.type === 'group' && currentGroup.value) {
-          if (m.type === 'video' || m.type === 'image') {
-            addToGroupVideos(m)
-          } else if (m.type === 'audio') {
-            addToGroupAudios(m)
-          }
-          return
-        }
-        // If group track but no sub-group selected, prompt to create one
-        if (selTrack && selTrack.type === 'group' && !currentGroup.value) {
-          // Select the first group if available
-          if (selTrack.groups && selTrack.groups.length > 0) {
-            selectGroupIndex.value = 0
-            if (m.type === 'video' || m.type === 'image') {
-              addToGroupVideos(m)
-            } else if (m.type === 'audio') {
-              addToGroupAudios(m)
-            }
-          }
-          return
-        }
-      }
+
+    // Helper: create a clip object from a material at given start frame
+    const createClipFromMaterial = (m, startFrame) => {
       const frames = m.type === 'image' ? 150 : 300
-      const clip = {
+      return {
         id: genId(),
         type: m.type,
         material_id: m.id,
         content: m.content,
         filepath: m.filepath,
-        start: 0,
-        end: frames,
+        start: startFrame,
+        end: startFrame + frames,
         frameCount: frames,
         offsetL: 0,
         offsetR: 0,
@@ -1103,7 +1199,6 @@ export default {
         scale: 100,
         width: m.frame_width || 1920,
         height: m.frame_height || 1080,
-        // Text style defaults (for text materials)
         fontSize: 48,
         fontFamily: 'sans-serif',
         fontColor: '#ffffff',
@@ -1118,6 +1213,86 @@ export default {
         effect: '',
         transitionIn: null,
       }
+    }
+
+    // Helper: append clip to a specific track and select it
+    const addClipToTrack = (clip, track) => {
+      const lastClip = track.list[track.list.length - 1]
+      const newStart = lastClip ? lastClip.end + 1 : 0
+      const duration = clip.frameCount
+      clip.start = newStart
+      clip.end = newStart + duration
+      track.list.push(clip)
+      selectLine.value = trackLines.value.indexOf(track)
+      selectIndex.value = track.list.length - 1
+      updateTotalFrames()
+    }
+
+    // Click / double-click dispatch from resource panel
+    let clickTimer = null
+    const onResourceClick = (m) => {
+      if (clickTimer) {
+        // Second click within double-click window → cancel single-click
+        clearTimeout(clickTimer)
+        clickTimer = null
+        return
+      }
+      clickTimer = setTimeout(() => {
+        clickTimer = null
+        addToTimeline(m)
+      }, 100)
+    }
+    const onResourceDoubleClick = (m) => {
+      // Clear any pending single-click timer
+      if (clickTimer) {
+        clearTimeout(clickTimer)
+        clickTimer = null
+      }
+      // If a non-group track is selected, add to that track
+      if (selectLine.value >= 0 && selectIndex.value < 0) {
+        const selTrack = trackLines.value[selectLine.value]
+        if (selTrack && selTrack.type !== 'group' && !selTrack.locked) {
+          const clip = createClipFromMaterial(m, 0)
+          addClipToTrack(clip, selTrack)
+          return
+        }
+        // Group track selected → delegate to addToTimeline (group handling)
+        if (selTrack && selTrack.type === 'group') {
+          addToTimeline(m)
+          return
+        }
+      }
+      // No track selected → add to main track (unless group tracks exist)
+      if (hasGroupTracks.value) return
+      let mainTrack = trackLines.value.find(l => l.main)
+      if (!mainTrack) {
+        mainTrack = makeTrack('video', true)
+        trackLines.value.splice(getTrackInsertIndex('video'), 0, mainTrack)
+      }
+      const clip = createClipFromMaterial(m, 0)
+      addClipToTrack(clip, mainTrack)
+    }
+
+    const addToTimeline = (m) => {
+      if (generating.value) return
+      // If a group track with a selected sub-group, add material to it
+      if (selectLine.value >= 0 && selectIndex.value < 0) {
+        const selTrack = trackLines.value[selectLine.value]
+        if (selTrack && selTrack.type === 'group' && currentGroup.value) {
+          if (m.type === 'video' || m.type === 'image') {
+            addToGroupVideos(m)
+          } else if (m.type === 'audio') {
+            addToGroupAudios(m)
+          }
+          return
+        }
+        // If group track but no sub-group selected, ignore
+        if (selTrack && selTrack.type === 'group' && !currentGroup.value) {
+          return
+        }
+      }
+      const clip = createClipFromMaterial(m, 0)
+      const frames = clip.frameCount
       // Find best track and position
       let inserted = false
       for (const line of trackLines.value) {
@@ -1230,6 +1405,7 @@ export default {
     }
 
     const deleteSelected = () => {
+      if (generating.value) return
       // Delete group card
       if (selectLine.value >= 0 && selectGroupIndex.value >= 0 && selectIndex.value < 0) {
         const line = trackLines.value[selectLine.value]
@@ -1247,7 +1423,7 @@ export default {
         if (line.groups.length === 0) {
           trackLines.value.splice(selectLine.value, 1)
           if (trackLines.value.length === 0) {
-            trackLines.value = [makeTrack('video', true)]
+            trackLines.value.push(makeTrack('video', true))
           }
         }
         selectGroupIndex.value = -1
@@ -1279,12 +1455,14 @@ export default {
     }
 
     const addTrack = () => {
+      if (generating.value) return
       const type = 'video'
       trackLines.value.splice(getTrackInsertIndex(type), 0, makeTrack(type))
       toast.success(`已添加${trackTypeName(type)}`)
     }
 
     const deleteTrack = () => {
+      if (generating.value) return
       if (selectLine.value < 0 || selectIndex.value >= 0) return
       const line = trackLines.value[selectLine.value]
       if (!line || line.main) { toast.warning('不能删除主轨道'); return }
@@ -1292,7 +1470,7 @@ export default {
       trackLines.value.splice(selectLine.value, 1)
       // If group track was removed and nothing left, restore main track
       if (line.type === 'group' && trackLines.value.length === 0) {
-        trackLines.value = [makeTrack('video', true)]
+        trackLines.value.push(makeTrack('video', true))
       }
       selectLine.value = -1
       selectIndex.value = -1
@@ -1301,6 +1479,7 @@ export default {
     }
 
     const splitClip = () => {
+      if (generating.value) return
       if (!canSplit.value) return
       const line = trackLines.value[selectLine.value]
       if (line && line.locked) { toast.warning('请先解锁轨道'); return }
@@ -1391,14 +1570,15 @@ export default {
 
     // ── 添加素材组（视频 + 配音）到独立轨道 ──
     const addGroupToTrack = async () => {
+      if (generating.value) return
       const groupName = await toast.prompt('请输入素材组名称', '添加素材组', '')
       if (!groupName) return
 
       // Find or create group track
       let gt = trackLines.value.find(l => l.type === 'group')
       if (!gt) {
-        // Remove all tracks; only the group track remains
-        trackLines.value = []
+        // Remove all other tracks; only the group track remains
+        trackLines.value.splice(0, trackLines.value.length)
         gt = makeTrack('group')
         gt.groups = []
         gt.subLanes = { video: { visible: true, locked: false, muted: false }, audio: { visible: true, locked: false, muted: false } }
@@ -1447,6 +1627,11 @@ export default {
 
     const addToGroupVideos = (m) => {
       if (!currentGroup.value) return
+      const existingVideos = (currentGroup.value.groupVideos || []).map(cid => groupTrack.value.list.find(c => c.id === cid)).filter(Boolean)
+      if (existingVideos.some(c => c.material_id === m.id)) {
+        toast.warning('该素材已在当前组中')
+        return
+      }
       const frames = 300
       const groupClips = groupTrack.value.list.filter(c => {
         const ids = new Set([...(currentGroup.value.groupVideos || []), ...(currentGroup.value.groupAudios || [])])
@@ -1472,6 +1657,11 @@ export default {
 
     const addToGroupAudios = (m) => {
       if (!currentGroup.value) return
+      const existingAudios = (currentGroup.value.groupAudios || []).map(aid => groupTrack.value.list.find(c => c.id === aid)).filter(Boolean)
+      if (existingAudios.some(c => c.material_id === m.id)) {
+        toast.warning('该素材已在当前组中')
+        return
+      }
       const frames = 300
       const groupClips = groupTrack.value.list.filter(c => {
         const ids = new Set([...(currentGroup.value.groupVideos || []), ...(currentGroup.value.groupAudios || [])])
@@ -1496,6 +1686,7 @@ export default {
     }
 
     const removeFromGroupList = (listType, idx) => {
+      if (generating.value) return
       if (!currentGroup.value || !groupTrack.value) return
       const list = listType === 'video' ? currentGroup.value.groupVideos : currentGroup.value.groupAudios
       const clipId = list[idx]
@@ -1509,7 +1700,7 @@ export default {
 
     const onGroupVideoDrop = (ev) => {
       ev.preventDefault()
-      if (!dragData || !currentGroup.value) return
+      if (generating.value || !dragData || !currentGroup.value) return
       if (dragData.type === 'video' || dragData.type === 'image') {
         addToGroupVideos(dragData)
         dragData = null
@@ -1518,7 +1709,7 @@ export default {
 
     const onGroupAudioDrop = (ev) => {
       ev.preventDefault()
-      if (!dragData || !currentGroup.value) return
+      if (generating.value || !dragData || !currentGroup.value) return
       if (dragData.type === 'audio') {
         addToGroupAudios(dragData)
         dragData = null
@@ -1527,7 +1718,7 @@ export default {
 
     const onGroupCardDrop = async (ev, li, gi) => {
       ev.preventDefault()
-      if (!dragData) return
+      if (generating.value || !dragData) return
       const track = trackLines.value[li]
       if (!track || !track.groups[gi]) return
       selectLine.value = li
@@ -1578,6 +1769,7 @@ export default {
 
     // Apply effect to all clips in the current group
     const applyGroupEffect = (key) => {
+      if (generating.value) return
       if (!currentGroup.value || !groupTrack.value) return
       currentGroup.value.effect = key
       const ids = new Set([...(currentGroup.value.groupVideos || []), ...(currentGroup.value.groupAudios || [])])
@@ -1589,6 +1781,7 @@ export default {
 
     // Apply transition to the current group (applied to all clips in the group)
     const setGroupTransition = (preset) => {
+      if (generating.value) return
       if (!currentGroup.value || !groupTrack.value) return
       if (preset.key) {
         currentGroup.value.transitionIn = { key: preset.key, type: preset.type, duration: preset.duration || 15, direction: preset.key.replace(/wipe/, '') || 'left' }
@@ -1634,7 +1827,7 @@ export default {
     const onGroupTrackDrop = async (ev, li) => {
       ev.preventDefault()
       ev.stopPropagation()
-      if (!dragData) return
+      if (generating.value || !dragData) return
       const track = trackLines.value[li]
       if (!track || !track.groups || track.groups.length === 0) return
       let gi = selectGroupIndex.value
@@ -1732,7 +1925,7 @@ export default {
     let trimState = null
     const startTrim = (ev, li, ci, side) => {
       ev.stopPropagation()
-      if (trackLines.value[li]?.locked) return
+      if (generating.value || trackLines.value[li]?.locked) return
       const clip = trackLines.value[li].list[ci]
       if (!clip) return
       trimState = { li, ci, side, startX: ev.clientX, origStart: clip.start, origEnd: clip.end }
@@ -1755,6 +1948,7 @@ export default {
       updateTotalFrames()
     }
     const endTrim = () => {
+      if (generating.value) return
       trimState = null
       document.removeEventListener('mousemove', onTrimMove)
       document.removeEventListener('mouseup', endTrim)
@@ -1794,44 +1988,15 @@ export default {
     }
 
     const onTrackDrop = (ev) => {
+      if (generating.value) return
       if (!dragData) return
+      if (dragData._fromTrack) return
       const scrollArea = trackRowsRef.value?.querySelector('.track-scroll-area')
       const rect = scrollArea ? scrollArea.getBoundingClientRect() : trackRowsRef.value.getBoundingClientRect()
       const x = ev.clientX - rect.left + scrollLeft
       const startFrame = getSelectFrame(x, trackScale.value)
       const m = dragData
-      const frames = m.type === 'image' ? 150 : 300
-      const clip = {
-        id: genId(),
-        type: m.type,
-        material_id: m.id,
-        content: m.content,
-        filepath: m.filepath,
-        start: startFrame,
-        end: startFrame + frames,
-        frameCount: frames,
-        offsetL: 0,
-        offsetR: 0,
-        centerX: 50,
-        centerY: 50,
-        scale: 100,
-        width: m.frame_width || 1920,
-        height: m.frame_height || 1080,
-        // Text style defaults
-        fontSize: 48,
-        fontFamily: 'sans-serif',
-        fontColor: '#ffffff',
-        bold: false,
-        italic: false,
-        shadow: false,
-        outline: false,
-        outlineColor: '#000000',
-        bgColor: '#000000',
-        bgEnabled: false,
-        textAlign: 'center',
-        effect: '',
-        transitionIn: null,
-      }
+      const clip = createClipFromMaterial(m, startFrame)
       // Find or create matching track
       let targetLine = trackLines.value.find(l => l.type === m.type && !l.locked)
       if (!targetLine) {
@@ -1841,6 +2006,37 @@ export default {
       targetLine.list.push(clip)
       selectLine.value = trackLines.value.indexOf(targetLine)
       selectIndex.value = targetLine.list.length - 1
+      dragData = null
+      updateTotalFrames()
+    }
+
+    // Drop resource material onto a specific track row
+    const onTrackRowDrop = (ev, li) => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      if (!dragData) return
+      const track = trackLines.value[li]
+      if (!track || track.locked) return
+
+      // Group track: delegate to existing group track drop handler
+      if (track.type === 'group' && track.groups && track.groups.length > 0) {
+        onGroupTrackDrop(ev, li)
+        return
+      }
+
+      // Track clip being dragged from another track → ignore on non-group tracks
+      if (dragData._fromTrack) return
+
+      // Resource panel material: add to this specific track
+      const scrollArea = trackRowsRef.value?.querySelector('.track-scroll-area')
+      const rect = scrollArea ? scrollArea.getBoundingClientRect() : trackRowsRef.value.getBoundingClientRect()
+      const x = ev.clientX - rect.left + scrollLeft
+      const startFrame = getSelectFrame(x, trackScale.value)
+      const m = dragData
+      const clip = createClipFromMaterial(m, startFrame)
+      track.list.push(clip)
+      selectLine.value = li
+      selectIndex.value = track.list.length - 1
       dragData = null
       updateTotalFrames()
     }
@@ -1932,14 +2128,36 @@ export default {
       document.addEventListener('mouseup', onUp)
     }
 
-    // ── Upload ──
+    // ── Upload dialog ──
     const showUploadDialog = ref(false)
     const uploadForm = ref({ type: 'video', content: '' })
     const uploadFile = ref(null)
     const uploadFileInput = ref(null)
     const uploading = ref(false)
+    const uploadDragging = ref(false)
 
-    const onFileChange = (e) => { uploadFile.value = e.target.files[0] || null }
+    const openUpload = (type) => {
+      uploadForm.value.type = type || 'video'
+      uploadForm.value.content = ''
+      uploadFile.value = null
+      showUploadDialog.value = true
+    }
+
+    const formatSize = (bytes) => {
+      if (!bytes) return ''
+      if (bytes < 1024) return bytes + ' B'
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+    }
+
+    const onUploadFileSelect = (e) => { uploadFile.value = e.target.files[0] || null }
+    const onUploadDrop = (e) => {
+      uploadDragging.value = false
+      const file = e.dataTransfer?.files?.[0]
+      if (file) uploadFile.value = file
+    }
+    const clearUploadFile = () => { uploadFile.value = null }
+
     const uploadMaterial = async () => {
       if (!uploadFile.value) { toast.warning('请选择文件'); return }
       if (!uploadForm.value.content.trim()) { toast.warning('请输入内容描述'); return }
@@ -1948,9 +2166,10 @@ export default {
         await materialApi.create({ type: uploadForm.value.type, content: uploadForm.value.content }, uploadFile.value)
         toast.success('上传成功')
         showUploadDialog.value = false
-        uploadForm.value = { type: 'video', content: '' }
+        uploadForm.value.content = ''
         uploadFile.value = null
-        await loadMaterials()
+        await loadLocalMaterials(false)
+        await loadTypeMaterials(uploadForm.value.type)
       } catch (e) {
         toast.error('上传失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
       } finally { uploading.value = false }
@@ -1958,16 +2177,18 @@ export default {
 
     // ── Save ──
     const save = async () => {
+      if (generating.value) return
       if (!form.value.title.trim()) { toast.warning('请输入标题'); return }
       saving.value = true
       try {
         // Serialize full track data as JSON
         const trackData = trackLines.value.map(line => {
           const track = {
-            name: line.name,
             type: line.type,
-            visible: line.visible,
-            muted: line.muted,
+            main: line.main || false,
+            visible: line.visible !== false,
+            locked: line.locked || false,
+            muted: line.muted || false,
             list: line.list.map(c => ({
               id: c.id, type: c.type, material_id: c.material_id,
               content: c.content, filepath: c.filepath,
@@ -2003,7 +2224,7 @@ export default {
         const payload = {
           title: form.value.title.trim(),
           script: form.value.script || '',
-          data: JSON.stringify({ tracks: trackData }),
+          data: JSON.stringify({ tracks: trackData, showSubtitles: showSubtitles.value }),
           frame_width: currentRatio.value.width,
           frame_height: currentRatio.value.height,
         }
@@ -2231,6 +2452,7 @@ export default {
         if (parsed && parsed.tracks && parsed.tracks.length > 0) {
           trackLines.value = parsed.tracks.map(t => ({
             ...t,
+            main: t.main || false,
             visible: t.visible !== false,
             locked: t.locked || false,
             muted: t.muted || false,
@@ -2245,6 +2467,7 @@ export default {
             subLanes: t.subLanes || { video: { visible: true, locked: false, muted: false }, audio: { visible: true, locked: false, muted: false } },
           }))
           updateTotalFrames()
+          if (parsed.showSubtitles !== undefined) showSubtitles.value = parsed.showSubtitles
         } else {
           trackLines.value = [makeTrack('video', true)]
         }
@@ -2279,9 +2502,24 @@ export default {
         resizeObserver = new ResizeObserver(() => resizeCanvas())
         resizeObserver.observe(playerContentRef.value)
       }
+      // Delete key support for selected clip / group card
+      const onKeyDown = (e) => {
+        if (e.key !== 'Delete' && e.key !== 'Backspace') return
+        // Don't delete when focus is on an input/textarea
+        const tag = document.activeElement?.tagName?.toLowerCase()
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+        if (!canDeleteSelected.value) return
+        e.preventDefault()
+        deleteSelected()
+      }
+      document.addEventListener('keydown', onKeyDown)
+      // Store for cleanup
+      _keydownHandler = onKeyDown
     })
 
+    let _keydownHandler = null
     onUnmounted(() => {
+      if (_keydownHandler) document.removeEventListener('keydown', _keydownHandler)
       if (playRaf) cancelAnimationFrame(playRaf)
       document.removeEventListener('mousemove', onTrimMove)
       document.removeEventListener('mouseup', endTrim)
@@ -2371,7 +2609,7 @@ export default {
       playerZoom, playerRatioIndex, ratioOptions, zoomOptions, currentRatio,
       getClipStyle, playheadLeft, trackHeightClass, trackTypeName,
       trackIconComp, typeLabel,
-      addToTimeline, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, canDeleteSelected, hasGroupTracks, splitClip,
+      addToTimeline, onResourceClick, onResourceDoubleClick, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, canDeleteSelected, hasGroupTracks, splitClip,
       hasAudioTracks: canExtractSubtitles, extractingSubtitles, extractSubtitles, addGroupToTrack,
       showSubtitles, toggleSubtitles,
       groupTrack, selectGroupIndex, currentGroup, getGroupCardStyle,
@@ -2380,12 +2618,12 @@ export default {
       applyGroupEffect, setGroupTransition,
       getGroupLineClip, getGroupSubClipStyle,
       startTrim, onResourceDragStart, onClipDragStart, onTrackDragOver, onTrackDrop,
-      onClipMouseDown, onGroupCardMouseDown, onGroupCardDrop, onGroupTrackDrop,
+      onClipMouseDown, onGroupCardMouseDown, onGroupCardDrop, onGroupTrackDrop, onTrackRowDrop,
       changeScale, togglePlay, formatFrame,
       startAttrResize, startTrackResize,
       onTrackScroll, onTimelineSeek,
-      showUploadDialog, uploadForm, uploadFileInput, uploading,
-      onFileChange, uploadMaterial,
+      showUploadDialog, uploadForm, uploadFile, uploadFileInput, uploading, uploadDragging,
+      openUpload, formatSize, onUploadFileSelect, onUploadDrop, clearUploadFile, uploadMaterial,
       save, generate, goBack, truncate,
       onCanvasMouseDown,
       effectPresets, transitionPresets,

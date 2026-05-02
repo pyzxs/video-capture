@@ -13,7 +13,7 @@ from src.logger import default_logger as logger
 from src.utils import ensure_date_dir
 
 # ── 音频相关 ──
-ffmpeg_prefix = ""
+ffmpeg_prefix = rf"{BASE_DIR}/bin/"
 
 
 def extract_audio(video_path: str, audio_path: str | None = None) -> str:

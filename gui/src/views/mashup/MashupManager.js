@@ -20,6 +20,7 @@ export default {
     const list = ref([])
     const loading = ref(true)
     const searchQuery = ref('')
+    const statusFilter = ref('')
     const page = ref(1)
     const pageSize = 20
     const total = ref(0)
@@ -51,6 +52,7 @@ export default {
       try {
         const params = {
           q: searchQuery.value || undefined,
+          status: statusFilter.value || undefined,
           skip: (page.value - 1) * pageSize,
           limit: pageSize,
         }
@@ -191,11 +193,6 @@ export default {
       router.push('/mashups/auto')
     }
 
-    // ── Batch mashup ──
-    const goBatch = () => {
-      router.push('/mashups/many')
-    }
-
     const onPageChange = (p) => {
       page.value = p
       loadList()
@@ -246,7 +243,7 @@ export default {
     })
 
     return {
-      list, loading, searchQuery,
+      list, loading, searchQuery, statusFilter, loadList,
       page, pageSize, total, onPageChange,
       viewMode,
       folders, folderMap,
@@ -257,7 +254,7 @@ export default {
       exporting, exportSelected, exportItem,
       openManual, openEdit,
       genVideo, dubVideo, deleteGen,
-      goAuto, goBatch,
+      goAuto,
       statusText, formatTime, truncate, formatDuration,
       activeVideos, activateVideo, setVideoRef, onVideoLoaded,
       hoverPlay, hoverPause,

@@ -116,13 +116,13 @@
   flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px;
 }
 
-.upload-zone {
+.sidebar-upload-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   height: 40px; background: #f3f4f6; border: 1px dashed #d1d5db;
   border-radius: 8px; color: #6b7280; font-size: 13px; cursor: pointer;
   margin-bottom: 8px; transition: all 0.15s;
 }
-.upload-zone:hover { background: #ede9fe; border-color: #6c5ce7; color: #6c5ce7; }
+.sidebar-upload-btn:hover { background: #ede9fe; border-color: #6c5ce7; color: #6c5ce7; }
 
 .mat-search-row { margin-bottom: 8px; }
 .mat-search-row .resource-search {
@@ -385,6 +385,7 @@
 
 .track-scroll-area {
   flex: 1; position: relative; overflow-x: hidden; overflow-y: visible;
+  user-select: none;
 }
 
 .track-row {
@@ -464,17 +465,17 @@
 .track-icon-item.th-text { height: 30px; }
 
 /* ── Upload Dialog ── */
-.upload-form { padding: 20px; }
-.upload-form label { display: block; margin-bottom: 14px; font-size: 13px; font-weight: 500; color: #374151; }
-.upload-form select, .upload-form textarea {
+:deep(.modal) { max-width: 520px; }
+:deep(.modal-header) { display: flex; align-items: center; justify-content: space-between; }
+:deep(.form) { padding: 20px; }
+:deep(.form > label) { display: block; margin-bottom: 14px; font-size: 13px; font-weight: 500; color: #374151; }
+:deep(.form select), :deep(.form textarea) {
   display: block; width: 100%; margin-top: 6px; padding: 7px 10px;
   border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;
   font-family: inherit; outline: none; box-sizing: border-box; background: #fff; color: #374151;
 }
-.upload-form select:focus, .upload-form textarea:focus { border-color: #6c5ce7; }
-.upload-form textarea { resize: vertical; min-height: 60px; }
-.upload-form input[type="file"] { margin-top: 6px; font-size: 13px; }
-.upload-actions { display: flex; justify-content: flex-end; padding-top: 8px; }
+:deep(.form select:focus), :deep(.form textarea:focus) { border-color: #6c5ce7; }
+:deep(.form textarea) { resize: vertical; min-height: 60px; }
 
 /* ── Global toast ── */
 :global(.global-toast) {
@@ -490,12 +491,8 @@
 }
 @keyframes toastSpin { to { transform: rotate(360deg); } }
 
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-/* Modal overrides */
-:deep(.modal) { max-width: 420px; }
-:deep(.modal-header) { display: flex; align-items: center; justify-content: space-between; }
+:global(.fade-enter-active), :global(.fade-leave-active) { transition: opacity 0.2s; }
+:global(.fade-enter-from), :global(.fade-leave-to) { opacity: 0; }
 
 /* ── Text Creation Panel (花字) ── */
 .text-create-form { padding: 10px 0; }
@@ -671,7 +668,7 @@
   display: flex; flex-direction: column;
   backdrop-filter: blur(4px);
   transition: box-shadow 0.15s, border-color 0.15s, background 0.15s;
-  min-width: 100px;
+  min-width: 100px; user-select: none;
 }
 .group-card:hover {
   background: rgba(108,92,231,0.13); border-color: rgba(108,92,231,0.45);

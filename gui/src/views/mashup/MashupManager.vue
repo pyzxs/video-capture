@@ -28,14 +28,16 @@
             </button>
           </div>
           <input v-model="searchQuery" placeholder="搜索标题..." class="search-input" @input="page=1; loadList()" />
+          <select v-model="statusFilter" class="filter-select" @change="page=1; loadList()">
+            <option value="">全部状态</option>
+            <option value="created">已创建</option>
+            <option value="completed">已完成</option>
+          </select>
           <button class="btn btn-primary" @click="openManual" title="手动剪辑">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><line x1="8.5" y1="6.5" x2="17.5" y2="17"/><line x1="8.5" y1="17.5" x2="17.5" y2="7"/></svg>
           </button>
           <button class="btn btn-info" @click="goAuto" title="智能混剪">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5z"/><path d="M18.5 15l.75 2.75L22 18.5l-2.75.75L18.5 22l-.75-2.75L15 18.5l2.75-.75z"/></svg>
-          </button>
-          <button class="btn btn-warning" @click="goBatch" title="批量混剪">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="18" height="18" rx="2"/></svg>
           </button>
         </div>
       </div>
@@ -98,7 +100,7 @@
             </div>
             <div class="card-script" :title="g.script">{{ truncate(g.script, 60) || '-' }}</div>
             <div class="card-actions">
-              <button class="btn btn-sm btn-primary" @click="openEdit(g)" title="编辑">
+              <button v-if="g.status !== 'completed'" class="btn btn-sm btn-primary" @click="openEdit(g)" title="编辑">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               </button>
               <button class="btn btn-sm btn-info" @click="exportItem(g.id)" :disabled="exporting" title="导出">
@@ -140,7 +142,7 @@
                 <td class="list-col-script" :title="g.script">{{ truncate(g.script, 60) || '-' }}</td>
                 <td class="list-col-time">{{ formatTime(g.created_at) }}</td>
                 <td class="list-col-actions">
-                  <button class="btn btn-xs btn-primary" @click="openEdit(g)" title="编辑">编辑</button>
+                  <button v-if="g.status !== 'completed'" class="btn btn-xs btn-primary" @click="openEdit(g)" title="编辑">编辑</button>
                   <button class="btn btn-xs btn-success" @click="genVideo(g)" :disabled="g.status==='processing'" title="生成">生成</button>
                   <button class="btn btn-xs btn-info" @click="exportItem(g.id)" :disabled="exporting" title="导出">导出</button>
                   <button class="btn btn-xs btn-danger" @click="deleteGen(g)" title="删除">删除</button>

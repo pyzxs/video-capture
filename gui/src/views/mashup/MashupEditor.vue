@@ -52,7 +52,7 @@
           <div class="item-list-content" ref="matListRef" @scroll="onMatScroll">
             <!-- Local / Upload -->
             <template v-if="activeMenu === 'local'">
-              <div class="upload-zone" @click="showUploadDialog = true">
+              <div class="sidebar-upload-btn" @click="openUpload('video')">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>上传素材</span>
               </div>
@@ -69,7 +69,8 @@
                 <div v-for="m in localFilteredMaterials" :key="m.id" class="resource-item" :class="'r-' + viewMode"
                   draggable="true"
                   @dragstart="onResourceDragStart(m, $event)"
-                  @click="addToTimeline(m)">
+                  @click="onResourceClick(m)"
+                  @dblclick.prevent="onResourceDoubleClick(m)">
                   <div class="resource-thumb">
                     <img v-if="m.type === 'image'" :src="`/api/materials/${m.id}/file`" class="resource-img" />
                     <template v-else-if="m.type === 'video'">
@@ -101,7 +102,7 @@
             </template>
             <!-- Video panel -->
             <template v-else-if="activeMenu === 'video'">
-              <div class="upload-zone" @click="showUploadDialog = true">
+              <div class="sidebar-upload-btn" @click="openUpload('video')">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>上传视频</span>
               </div>
@@ -109,7 +110,8 @@
                 <div v-for="m in videoMatItems" :key="m.id" class="resource-item" :class="'r-' + viewMode"
                   draggable="true"
                   @dragstart="onResourceDragStart(m, $event)"
-                  @click="addToTimeline(m)">
+                  @click="onResourceClick(m)"
+                  @dblclick.prevent="onResourceDoubleClick(m)">
                   <div class="resource-thumb">
                     <div class="video-thumb-wrap">
                       <video :src="`/api/materials/${m.id}/file`" preload="metadata" muted playsinline
@@ -133,7 +135,7 @@
             </template>
             <!-- Image panel -->
             <template v-else-if="activeMenu === 'image'">
-              <div class="upload-zone" @click="showUploadDialog = true">
+              <div class="sidebar-upload-btn" @click="openUpload('image')">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>上传图片</span>
               </div>
@@ -141,7 +143,8 @@
                 <div v-for="m in imageMatItems" :key="m.id" class="resource-item" :class="'r-' + viewMode"
                   draggable="true"
                   @dragstart="onResourceDragStart(m, $event)"
-                  @click="addToTimeline(m)">
+                  @click="onResourceClick(m)"
+                  @dblclick.prevent="onResourceDoubleClick(m)">
                   <div class="resource-thumb">
                     <img :src="`/api/materials/${m.id}/file`" class="resource-img" />
                   </div>
@@ -152,7 +155,7 @@
             </template>
             <!-- Audio panel -->
             <template v-else-if="activeMenu === 'audio'">
-              <div class="upload-zone" @click="showUploadDialog = true">
+              <div class="sidebar-upload-btn" @click="openUpload('audio')">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>上传音频</span>
               </div>
@@ -160,7 +163,8 @@
                 <div v-for="m in audioMatItems" :key="m.id" class="resource-item" :class="'r-' + viewMode"
                   draggable="true"
                   @dragstart="onResourceDragStart(m, $event)"
-                  @click="addToTimeline(m)">
+                  @click="onResourceClick(m)"
+                  @dblclick.prevent="onResourceDoubleClick(m)">
                   <div class="resource-thumb">
                     <button class="audio-play-btn" :class="{ playing: playingAudioId === m.id }" @click.stop="toggleAudio(m)" :title="playingAudioId === m.id ? '停止' : '试听'">
                       <svg v-if="playingAudioId !== m.id" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><polygon points="8 5 19 12 8 19 8 5"/></svg>
@@ -195,7 +199,8 @@
                   <div v-for="m in textMatItems" :key="m.id" class="resource-item r-list"
                     draggable="true"
                     @dragstart="onResourceDragStart(m, $event)"
-                    @click="addToTimeline(m)">
+                    @click="onResourceClick(m)"
+                    @dblclick.prevent="onResourceDoubleClick(m)">
                     <div class="resource-thumb">
                       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
                     </div>
@@ -507,7 +512,7 @@
               <button class="tb-btn" @click="deleteTrack" :disabled="!canDeleteTrack" title="删除轨道">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
               </button>
-              <button class="tb-btn" @click="addTrack" title="添加轨道">
+              <button class="tb-btn" @click="addTrack" :disabled="hasGroupTracks" :title="hasGroupTracks ? '组轨道模式下不支持添加普通轨道' : '添加轨道'">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
               </button>
               <div class="tb-sep"></div>
@@ -609,7 +614,7 @@
                     :class="[trackHeightClass(line.type), line.main ? 'is-main' : '', { 'is-active': selectLine === li }]"
                     @click="selectLine = li; selectIndex = -1"
                     @dragover.prevent
-                    @drop="onGroupTrackDrop($event, li)">
+                    @drop="onTrackRowDrop($event, li)">
                     <!-- Group track: folder cards spanning full height -->
                     <template v-if="line.type === 'group' && line.groups">
                       <div v-for="(g, gi) in line.groups" :key="'gc-' + gi"
@@ -676,30 +681,93 @@
 
     <!-- Upload Dialog -->
     <div v-if="showUploadDialog" class="modal-overlay" @click.self="showUploadDialog = false">
-      <div class="modal modal-sm">
+      <div class="modal">
         <div class="modal-header">
           <h3>上传素材</h3>
-          <button class="btn btn-default btn-sm" @click="showUploadDialog = false">✕</button>
-        </div>
-        <div class="upload-form">
-          <label>类型
-            <select v-model="uploadForm.type">
-              <option value="video">视频</option>
-              <option value="image">图片</option>
-              <option value="scene">场景</option>
-            </select>
-          </label>
-          <label>文件
-            <input type="file" ref="uploadFileInput" @change="onFileChange" accept="video/*,image/*" />
-          </label>
-          <label>内容描述
-            <textarea v-model="uploadForm.content" placeholder="描述素材内容..." rows="3"></textarea>
-          </label>
-          <div class="upload-actions">
-            <button class="btn btn-primary" @click="uploadMaterial" :disabled="uploading">
-              {{ uploading ? '上传中...' : '上传' }}
+          <div class="modal-actions">
+            <button class="btn btn-primary" @click="uploadMaterial" :disabled="uploading" title="上传">
+              <svg v-if="!uploading" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span v-else>上传中...</span>
+            </button>
+            <button class="btn btn-default" @click="showUploadDialog = false" title="取消">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
+        </div>
+        <div class="form">
+          <label>类型
+            <select v-model="uploadForm.type" @change="clearUploadFile">
+              <option value="video">视频</option>
+              <option value="image">图片</option>
+              <option value="audio">音频</option>
+            </select>
+          </label>
+
+          <!-- Video upload zone -->
+          <template v-if="uploadForm.type === 'video'">
+            <div class="upload-zone" @drop.prevent="onUploadDrop" @dragover.prevent
+                 :class="{ 'drag-over': uploadDragging }"
+                 @dragenter="uploadDragging = true" @dragleave="uploadDragging = false">
+              <input ref="uploadFileInput" type="file" accept=".mp4,.avi,.mkv,.mov,.webm,.flv" hidden @change="onUploadFileSelect" />
+              <div v-if="!uploadFile" class="upload-placeholder" @click="$refs.uploadFileInput.click()">
+                <span class="upload-icon">📁</span>
+                <span>点击选择视频文件，或拖拽到此处</span>
+                <span class="upload-hint">支持 mp4, avi, mkv, mov, webm, flv</span>
+              </div>
+              <div v-else class="upload-preview">
+                <span class="file-name">{{ uploadFile.name }}</span>
+                <span class="file-size">{{ formatSize(uploadFile.size) }}</span>
+                <button class="btn btn-sm btn-default" @click="clearUploadFile" title="重新选择">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+            </div>
+            <label>内容描述 <textarea v-model="uploadForm.content" rows="3" placeholder="描述素材内容..."></textarea></label>
+          </template>
+
+          <!-- Image upload zone -->
+          <template v-if="uploadForm.type === 'image'">
+            <div class="upload-zone" @drop.prevent="onUploadDrop" @dragover.prevent
+                 :class="{ 'drag-over': uploadDragging }"
+                 @dragenter="uploadDragging = true" @dragleave="uploadDragging = false">
+              <input ref="uploadFileInput" type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg" hidden @change="onUploadFileSelect" />
+              <div v-if="!uploadFile" class="upload-placeholder" @click="$refs.uploadFileInput.click()">
+                <span class="upload-icon">🖼️</span>
+                <span>点击选择图片文件，或拖拽到此处</span>
+                <span class="upload-hint">支持 png, jpg, gif, webp, bmp, svg</span>
+              </div>
+              <div v-else class="upload-preview">
+                <span class="file-name">{{ uploadFile.name }}</span>
+                <span class="file-size">{{ formatSize(uploadFile.size) }}</span>
+                <button class="btn btn-sm btn-default" @click="clearUploadFile" title="重新选择">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+            </div>
+            <label>描述文本 <textarea v-model="uploadForm.content" rows="3" placeholder="图片描述/文案..."></textarea></label>
+          </template>
+
+          <!-- Audio upload zone -->
+          <template v-if="uploadForm.type === 'audio'">
+            <div class="upload-zone" @drop.prevent="onUploadDrop" @dragover.prevent
+                 :class="{ 'drag-over': uploadDragging }"
+                 @dragenter="uploadDragging = true" @dragleave="uploadDragging = false">
+              <input ref="uploadFileInput" type="file" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac" hidden @change="onUploadFileSelect" />
+              <div v-if="!uploadFile" class="upload-placeholder" @click="$refs.uploadFileInput.click()">
+                <span class="upload-icon">🎵</span>
+                <span>点击选择音频文件，或拖拽到此处</span>
+                <span class="upload-hint">支持 mp3, wav, ogg, m4a, aac, flac</span>
+              </div>
+              <div v-else class="upload-preview">
+                <span class="file-name">{{ uploadFile.name }}</span>
+                <span class="file-size">{{ formatSize(uploadFile.size) }}</span>
+                <button class="btn btn-sm btn-default" @click="clearUploadFile" title="重新选择">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                </button>
+              </div>
+            </div>
+            <label>内容描述 <textarea v-model="uploadForm.content" rows="3" placeholder="描述音频内容..."></textarea></label>
+          </template>
         </div>
       </div>
     </div>

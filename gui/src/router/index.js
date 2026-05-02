@@ -5,7 +5,6 @@ import MaterialManager from '../views/material/MaterialManager.vue'
 import MashupManager from '../views/mashup/MashupManager.vue'
 import MashupEditor from '../views/mashup/MashupEditor.vue'
 import AutoMashup from '../views/mashup/AutoMashup.vue'
-import MashupManyEditor from '../views/mashup/MashupManyEditor.vue'
 import SettingsView from '../views/settings/Settings.vue'
 import AgentsView from '../views/agent/Agents.vue'
 import NotesView from '../views/note/Notes.vue'
@@ -18,7 +17,6 @@ const routes = [
   { path: '/mashups', name: 'Mashups', component: MashupManager, meta: { title: '混剪视频管理' } },
   { path: '/mashups/editor/:id?', name: 'MashupEditor', component: MashupEditor, meta: { title: '混剪编辑器' } },
   { path: '/mashups/auto', name: 'AutoMashup', component: AutoMashup, meta: { title: '自动混剪' } },
-  { path: '/mashups/many', name: 'MashupManyEditor', component: MashupManyEditor, meta: { title: '批量混剪' } },
   { path: '/notes', name: 'Notes', component: NotesView, meta: { title: '笔记管理' } },
   { path: '/agents', name: 'Agents', component: AgentsView, meta: { title: '智能体管理' } },
   { path: '/settings', name: 'Settings', component: SettingsView, meta: { title: '系统配置' } },

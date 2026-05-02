@@ -55,7 +55,7 @@ function createTray() {
   const icon = nativeImage.createFromBuffer(buffer, { width: size, height: size })
 
   tray = new Tray(icon)
-  tray.setToolTip('视频采集')
+  tray.setToolTip('Video Capture')
 
   const contextMenu = Menu.buildFromTemplate([
     {

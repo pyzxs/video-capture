@@ -48,6 +48,7 @@ def _gen_to_dict(gen: GeneratedVideo) -> dict:
 def list_generated(
     q: str | None = None,
     folder_id: int | None = None,
+    status: str | None = None,
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
@@ -55,6 +56,8 @@ def list_generated(
     query = db.query(GeneratedVideo).order_by(GeneratedVideo.id.desc())
     if q:
         query = query.filter(GeneratedVideo.title.contains(q))
+    if status:
+        query = query.filter(GeneratedVideo.status == status)
     if folder_id is not None:
         if folder_id == 0:
             query = query.filter(GeneratedVideo.folder_id.is_(None))
@@ -677,6 +680,28 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
         except Exception as e:
             logger.warning("字幕压制失败（不影响生成）: %s", e)
 
+    # Auto subtitle: if showSubtitles enabled, extract speech via ASR and burn
+    show_subtitles = clip_data.get("showSubtitles", False)
+    if show_subtitles:
+        try:
+            from src.processing.subtitle import get_timestamps
+            from src.processing.ffmpeg import composite_subtitles
+            logger.info("开始自动提取字幕（ASR）...")
+            segments = get_timestamps(output, language="zh")
+            if segments:
+                ass_path = str(Path(temp_dir).parent / f"asr_subs_{gen.id}.ass")
+                _write_asr_ass(segments, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
+                output = composite_subtitles(output, ass_path)
+                try:
+                    Path(ass_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                logger.info("ASR 字幕压制完成，共 %d 条", len(segments))
+            else:
+                logger.warning("ASR 未提取到字幕内容")
+        except Exception as e:
+            logger.warning("自动字幕提取失败（不影响生成）: %s", e)
+
     gen.status = "completed"
     gen.output_filepath = output
     gen.thumbnail = generate_thumbnail(output)
@@ -735,9 +760,10 @@ def batch_generate_groups(gen_id: int, db: Session = Depends(get_db)):
     # Build the list of (video_clip, audio_clip) pairs for each sub-group (in order)
     # groups_order[i] = list of (video_clip_dict, audio_clip_dict or None)
     groups_order = []
-    for gt in group_tracks:
+    group_origins = []  # (group_track_index, group_index) for each entry in groups_order
+    for gt_idx, gt in enumerate(group_tracks):
         clip_map = {c["id"]: c for c in gt.get("list", [])}
-        for g in gt.get("groups", []):
+        for g_idx, g in enumerate(gt.get("groups", [])):
             videos = g.get("groupVideos", []) or []
             audios = g.get("groupAudios", []) or []
             if not videos:
@@ -755,6 +781,7 @@ def batch_generate_groups(gen_id: int, db: Session = Depends(get_db)):
                     pairs.append((vclip, None))
             if pairs:
                 groups_order.append(pairs)
+                group_origins.append((gt_idx, g_idx))
 
     if not groups_order:
         raise HTTPException(400, "组内没有可用的视频素材")
@@ -895,11 +922,36 @@ def batch_generate_groups(gen_id: int, db: Session = Depends(get_db)):
         # Generate thumbnail
         thumb = generate_thumbnail(output)
 
+        # Reconstruct data with only the materials used in this combo
+        reconstructed_tracks = list(non_group_tracks)
+        resolved_gt = {}  # gt_idx -> {track_data}
+        for i, (vclip, aclip) in enumerate(combo):
+            gt_idx, g_idx = group_origins[i]
+            if gt_idx not in resolved_gt:
+                gt = group_tracks[gt_idx]
+                resolved_gt[gt_idx] = {
+                    "type": gt.get("type", "group"),
+                    "list": [],
+                    "groups": [],
+                }
+            entry = resolved_gt[gt_idx]
+            existing_ids = {c["id"] for c in entry["list"]}
+            if vclip["id"] not in existing_ids:
+                entry["list"].append(vclip)
+                existing_ids.add(vclip["id"])
+            if aclip and aclip["id"] not in existing_ids:
+                entry["list"].append(aclip)
+            group_entry = {"groupVideos": [vclip["id"]], "groupAudios": [aclip["id"]] if aclip else []}
+            entry["groups"].append(group_entry)
+        for gt_idx in sorted(resolved_gt.keys()):
+            reconstructed_tracks.append(resolved_gt[gt_idx])
+        reconstructed_data = json.dumps({"tracks": reconstructed_tracks})
+
         # Create GeneratedVideo record for this combination
         combo_gen = GeneratedVideo(
             title=f"{gen.title or '混剪'}{suffix}",
             script=gen.script,
-            data=gen.data,
+            data=reconstructed_data,
             output_filepath=output,
             frame_width=gen.frame_width,
             frame_height=gen.frame_height,

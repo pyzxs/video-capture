@@ -6,7 +6,7 @@
           <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
         </svg>
       </div>
-      <span class="header-title">AI Video Capture</span>
+      <span class="header-title">Video Capture</span>
     </div>
     <div class="header-controls">
       <button class="header-btn" @click="minimizeWindow" title="最小化">
