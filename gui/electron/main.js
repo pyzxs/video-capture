@@ -15,9 +15,19 @@ function getBackendExePath() {
     // 开发模式：假设后端已通过 python main.py 单独启动
     return null
   }
-  // 生产模式：extraResources 将后端打包到 resources/
   const exeName = process.platform === 'win32' ? 'video-capture-server.exe' : 'video-capture-server'
-  return path.join(process.resourcesPath, 'video-capture-server', exeName)
+  const appRoot = path.dirname(process.resourcesPath)
+
+  // NSIS 安装后 exe 被展平到根目录；zip 分发包中 exe 在 video-capture-server/ 下
+  const flatPath = path.join(appRoot, exeName)
+  const nestedPath = path.join(appRoot, 'video-capture-server', exeName)
+
+  const fs = require('fs')
+  if (fs.existsSync(flatPath)) return flatPath
+  if (fs.existsSync(nestedPath)) return nestedPath
+
+  // 默认返回展平路径（安装版）
+  return flatPath
 }
 
 // ── 后端进程管理 ──

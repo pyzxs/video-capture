@@ -1,8 +1,9 @@
 import hashlib
-import secrets
 import subprocess
 import uuid
+
 import requests
+
 from src.config import get_config, save_config
 from src.logger import get_logger
 

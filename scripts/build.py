@@ -58,10 +58,6 @@ HIDDEN_IMPORTS = [
     "lxml",
     "aiohttp",
     "aiofiles",
-    "imageio",
-    "imageio_ffmpeg",
-    "av",
-    "cv2",
 ]
 
 # 需要收集整个包的模块（含二进制 .dll/.so）
@@ -71,9 +67,6 @@ COLLECT_PACKAGES = [
     "huggingface_hub",
     "chromadb",
     "onnxruntime",
-    "imageio_ffmpeg",
-    "imageio",
-    "av",
     "opentelemetry",
     "opentelemetry.sdk",
     "opentelemetry.api",
@@ -229,7 +222,7 @@ def build(compress: bool = True):
     print(f"  或双击 start_server.bat (如果已创建)")
 
     # 可选：创建启动脚本
-    # create_start_script(out_dir)
+    create_start_script(out_dir)
 
 
 def create_start_script(out_dir: Path):

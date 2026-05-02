@@ -6,15 +6,13 @@ from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from src.logger import  default_logger as logger
 from src.api.deps import get_db
-from src.api.schemas import MaterialCreate, MaterialOut, MaterialTtsRequest, MaterialUpdate, PaginatedMaterials
+from src.api.schemas import MaterialCreate, MaterialOut, MaterialTtsRequest, MaterialUpdate
 from src.config import get_config
-from src.db.vector import VectorStore
 from src.db.models import Material
 from src.processing.ffmpeg import get_video_duration, get_video_metadata
 from src.services.tts import synthesize
-from src.utils import ensure_date_dir, get_image_size_imageio, generate_thumbnail, thumb_url
+from src.utils import ensure_date_dir, get_image_size, generate_thumbnail, thumb_url
 
 router = APIRouter(prefix="/materials", tags=["素材管理"])
 
@@ -122,7 +120,7 @@ def create_material_with_file(
             if not frame_rate:
                 frame_rate = meta.get("frame_rate", 0.0)
         elif mat_type == "image":
-            frame_width, frame_height = get_image_size_imageio(filepath)
+            frame_width, frame_height = get_image_size(filepath)
             pass
         elif mat_type == "audio":
             pass  # 图片素材不需要额外提取元数据

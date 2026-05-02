@@ -29,18 +29,19 @@
     },
     "asar": true,
     "asarUnpack": [],
-    "extraResources": [
+    "extraFiles": [
       {
         "from": "../dist/video-capture-server",
-        "to": "video-capture-server"
+        "to": "."
       },
       {
         "from": "../bin",
-        "to": "video-capture-server/bin"
+        "to": "bin",
+        "filter": ["**/*", "!upx*"]
       },
-       {
+      {
         "from": "../config.enc.bak",
-        "to": "video-capture-server/config.enc"
+        "to": "config.enc"
       }
     ],
     "win": {
