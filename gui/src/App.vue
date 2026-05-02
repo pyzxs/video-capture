@@ -1,11 +1,7 @@
 <template>
   <header class="app-header">
     <div class="header-logo">
-      <div class="logo-circle">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-        </svg>
-      </div>
+      <img src="/video-capture.ico" width="22" height="22" class="logo-icon" alt="" />
       <span class="header-title">Video Capture</span>
     </div>
     <div class="header-controls">
@@ -248,14 +244,10 @@ body {
   align-items: center;
   gap: 10px;
 }
-.header-logo .logo-circle {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #16a34a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.header-logo .logo-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 .header-title {
   font-size: 14px;

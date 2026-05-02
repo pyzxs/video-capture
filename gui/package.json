@@ -20,5 +20,49 @@
     "concurrently": "^9.0.0",
     "wait-on": "^8.0.0"
   },
-  "main": "electron/main.js"
+  "main": "electron/main.js",
+  "build": {
+    "appId": "com.video-capture.app",
+    "productName": "Video Capture",
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "asarUnpack": [],
+    "extraResources": [
+      {
+        "from": "../dist/video-capture-server",
+        "to": "video-capture-server"
+      },
+      {
+        "from": "../bin",
+        "to": "video-capture-server/bin"
+      },
+       {
+        "from": "../config.enc.bak",
+        "to": "video-capture-server/config.enc"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "video-capture.ico"
+    },
+    "nsis": {
+     "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "build/installer.nsh",
+      "warningsAsErrors": false
+    }
+  }
 }

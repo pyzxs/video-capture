@@ -22,3 +22,5 @@ database
 model
 thumbnails
 bin
+release/
+gui/public

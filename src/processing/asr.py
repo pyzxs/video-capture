@@ -1,9 +1,9 @@
-"""ASR 语音转文本：本地 Whisper + CMS 代理双模式。"""
+"""ASR 语音转文本：本地 faster-whisper + CMS 代理双模式。"""
 import os
 from pathlib import Path
 
 import requests
-import whisper
+from faster_whisper import WhisperModel
 
 from src.config import get_config
 from src.logger import default_logger as logger
@@ -16,8 +16,13 @@ def get_asr_model():
     """延迟加载 Whisper ASR 模型（全局缓存，只加载一次）。"""
     global _model
     if _model is None:
-        get_config("whisper_model_dir").mkdir(parents=True, exist_ok=True)
-        _model = whisper.load_model(get_config("asr_model_size"), download_root=str(get_config("whisper_model_dir")))
+        model_dir = str(get_config("whisper_model_dir").resolve())
+        _model = WhisperModel(
+            get_config("asr_model_size"),
+            device="cpu",
+            compute_type="int8",
+            download_root=model_dir,
+        )
     return _model
 
 
@@ -28,15 +33,15 @@ def transcribe(audio_path: str, language: str = "zh") -> list[dict]:
     """
     print("转录返回: {}".format(audio_path))
     model = get_asr_model()
-    result = model.transcribe(audio_path, language=language, fp16=False)
+    segs, info = model.transcribe(audio_path, language=language)
 
     segments = []
-    for seg in result["segments"]:
-        text = seg["text"].strip()
+    for seg in segs:
+        text = seg.text.strip()
         if text:
             segments.append({
-                "start": seg["start"],
-                "end": seg["end"],
+                "start": seg.start,
+                "end": seg.end,
                 "text": text,
             })
     return segments
