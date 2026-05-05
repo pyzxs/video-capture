@@ -28,7 +28,7 @@
           <td>{{ v.id }}</td>
           <td class="video-cell">
             <video
-              :src="`/api/videos/${v.id}/file`"
+              :src="$apiUrl(`/api/videos/${v.id}/file`)"
               @mouseenter="hoverPlay($event)"
               @mouseleave="hoverPause($event)"
               muted

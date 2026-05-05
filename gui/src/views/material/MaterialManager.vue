@@ -63,7 +63,7 @@
             <template v-if="activeVideos.has(m.id)">
               <video
                 :ref="el => setVideoRef(m.id, el)"
-                :src="`/api/materials/${m.id}/file`"
+                :src="$apiUrl(`/api/materials/${m.id}/file`)"
                 controls
                 preload="auto"
                 class="material-player"
@@ -89,10 +89,10 @@
             </div>
           </div>
           <div v-else-if="m.type === 'image' && m.filepath" class="card-image">
-            <img :src="`/api/materials/${m.id}/file`" class="material-img" />
+            <img :src="$apiUrl(`/api/materials/${m.id}/file`)" class="material-img" />
           </div>
           <div v-else-if="m.type === 'audio' && m.filepath" class="card-audio">
-            <audio :src="`/api/materials/${m.id}/file`" controls preload="none" class="material-audio"></audio>
+            <audio :src="$apiUrl(`/api/materials/${m.id}/file`)" controls preload="none" class="material-audio"></audio>
           </div>
           <div v-else-if="m.type === 'text'" class="card-text-preview">
             <div class="md-preview-sm" v-html="renderMarkdown(m.content)"></div>

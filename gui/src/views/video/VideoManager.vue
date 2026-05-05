@@ -56,7 +56,7 @@
             <template v-if="activeVideos.has(v.id)">
               <video
                 :ref="el => setVideoRef(v.id, el)"
-                :src="`/api/videos/${v.id}/file`"
+                :src="$apiUrl(`/api/videos/${v.id}/file`)"
                 controls
                 preload="auto"
                 class="video-player-card"
@@ -489,7 +489,7 @@
               <div v-for="(m, idx) in splitMaterials" :key="m.id" class="split-item">
                 <span class="split-order">{{ idx + 1 }}</span>
                 <div class="split-preview">
-                  <video :src="`/api/materials/${m.id}/file`" controls preload="metadata"
+                  <video :src="$apiUrl(`/api/materials/${m.id}/file`)" controls preload="metadata"
                     class="split-video-preview"
                     @mouseenter="hoverPlay($event)" @mouseleave="hoverPause($event)"></video>
                 </div>
@@ -620,7 +620,7 @@
             <div v-for="(m, idx) in splitMaterials" :key="m.id" class="split-item">
               <span class="split-order">{{ idx + 1 }}</span>
               <div class="split-preview">
-                <video :src="`/api/materials/${m.id}/file`" controls preload="metadata"
+                <video :src="$apiUrl(`/api/materials/${m.id}/file`)" controls preload="metadata"
                   class="split-video-preview"
                   @mouseenter="hoverPlay($event)" @mouseleave="hoverPause($event)"></video>
               </div>

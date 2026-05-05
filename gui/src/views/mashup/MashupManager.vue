@@ -62,7 +62,7 @@
                 <template v-if="activeVideos.has(g.id)">
                   <video
                     :ref="el => setVideoRef(g.id, el)"
-                    :src="`/api/generated/${g.id}/download`"
+                    :src="$apiUrl(`/api/generated/${g.id}/download`)"
                     controls
                     preload="auto"
                     class="video-player-card"

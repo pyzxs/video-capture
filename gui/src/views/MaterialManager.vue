@@ -32,7 +32,7 @@
 
           <div v-if="m.type === 'video' && m.filepath" class="card-video">
             <video
-              :src="`/api/materials/${m.id}/file`"
+              :src="$apiUrl(`/api/materials/${m.id}/file`)"
               controls
               preload="metadata"
               class="material-player"

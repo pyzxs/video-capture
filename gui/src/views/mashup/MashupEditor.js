@@ -1,6 +1,6 @@
 import { ref, computed, onMounted, watch, nextTick, onUnmounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generatedApi, materialApi, folderApi, editorApi } from '../../api/index.js'
+import { generatedApi, materialApi, folderApi, editorApi, apiUrl } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 import { useFolders } from '../../composables/useFolders.js'
 
@@ -278,7 +278,7 @@ export default {
       }
       video.onseeked = () => { requestAnimationFrame(() => { if (previewLoaded.value) drawToCanvas(false) }) }
       video.onerror = () => { previewLoaded.value = false }
-      video.src = `/api/materials/${clip.material_id}/file`
+      video.src = apiUrl(`/api/materials/${clip.material_id}/file`)
       video.load()
       return false
     }
@@ -749,7 +749,7 @@ export default {
           if (audioClip.material_id !== loadedVideoId) {
             loadedVideoId = audioClip.material_id
             previewLoaded.value = true
-            video.src = `/api/materials/${audioClip.material_id}/file`
+            video.src = apiUrl(`/api/materials/${audioClip.material_id}/file`)
             const startVideo = () => {
               video.currentTime = seekToVideo
               video.play().catch(e => console.warn('Video play error:', e))
@@ -825,7 +825,7 @@ export default {
           const lf = Math.max(0, playStartFrame.value - audioClip.start)
           const seekTo = lf / 30
           video.pause()
-          video.src = `/api/materials/${audioClip.material_id}/file`
+          video.src = apiUrl(`/api/materials/${audioClip.material_id}/file`)
           const startVideo = () => {
             video.currentTime = seekTo
             video.play().catch(e => console.warn('Video play error:', e))
@@ -915,7 +915,7 @@ export default {
           video.onloadeddata = null
         }
         video.onerror = () => { syncVideoLoading = false; previewLoaded.value = false }
-        video.src = `/api/materials/${vClip.material_id}/file`
+        video.src = apiUrl(`/api/materials/${vClip.material_id}/file`)
         video.load()
       } else if (video.paused && previewLoaded.value) {
         video.volume = 0

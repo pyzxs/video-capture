@@ -72,10 +72,10 @@
                   @click="onResourceClick(m)"
                   @dblclick.prevent="onResourceDoubleClick(m)">
                   <div class="resource-thumb">
-                    <img v-if="m.type === 'image'" :src="`/api/materials/${m.id}/file`" class="resource-img" />
+                    <img v-if="m.type === 'image'" :src="$apiUrl(`/api/materials/${m.id}/file`)" class="resource-img" />
                     <template v-else-if="m.type === 'video'">
                       <div class="video-thumb-wrap">
-                        <video :src="`/api/materials/${m.id}/file`" preload="metadata" muted playsinline
+                        <video :src="$apiUrl(`/api/materials/${m.id}/file`)" preload="metadata" muted playsinline
                           class="video-mat-thumb" :class="{ playing: playingVideoId === m.id }"
                           :ref="el => { if (el) videoRefs[m.id] = el }"
                           @loadedmetadata="el => { el.currentTime = 0.01 }"
@@ -114,7 +114,7 @@
                   @dblclick.prevent="onResourceDoubleClick(m)">
                   <div class="resource-thumb">
                     <div class="video-thumb-wrap">
-                      <video :src="`/api/materials/${m.id}/file`" preload="metadata" muted playsinline
+                      <video :src="$apiUrl(`/api/materials/${m.id}/file`)" preload="metadata" muted playsinline
                         class="video-mat-thumb" :class="{ playing: playingVideoId === m.id }"
                         :ref="el => { if (el) videoRefs[m.id] = el }"
                         @loadedmetadata="el => { el.currentTime = 0.01 }"
@@ -146,7 +146,7 @@
                   @click="onResourceClick(m)"
                   @dblclick.prevent="onResourceDoubleClick(m)">
                   <div class="resource-thumb">
-                    <img :src="`/api/materials/${m.id}/file`" class="resource-img" />
+                    <img :src="$apiUrl(`/api/materials/${m.id}/file`)" class="resource-img" />
                   </div>
                   <span class="resource-name" :title="truncate(m.content, 20)">{{ viewMode === 'grid' ? m.content : truncate(m.content, 10) }}</span>
                 </div>
@@ -651,7 +651,7 @@
                         <span class="tc-name">{{ truncate(clip.content, 10) }}</span>
                       </div>
                       <div class="tc-body" :class="'tc-body-' + clip.type">
-                        <img v-if="clip.type === 'image'" :src="`/api/materials/${clip.material_id}/file`" class="tc-thumb" />
+                        <img v-if="clip.type === 'image'" :src="$apiUrl(`/api/materials/${clip.material_id}/file`)" class="tc-thumb" />
                       </div>
                       <!-- Trim handles -->
                       <div v-if="selectLine === li && selectIndex === ci" class="tc-handle left" @mousedown.stop="startTrim($event, li, ci, 'left')">
