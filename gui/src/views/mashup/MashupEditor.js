@@ -292,7 +292,7 @@ export default {
         const img = new Image()
         imageCache[id] = img
         img.onload = () => { drawToCanvas(false) }
-        img.src = `/api/materials/${id}/file`
+        img.src = apiUrl(`/api/materials/${id}/file`)
       }
       return null
     }
@@ -729,7 +729,7 @@ export default {
           const audioEl = hiddenAudioRef.value
           const lf = Math.max(0, playStartFrame.value - audioClip.start)
           const seekTo = lf / 30
-          audioEl.src = `/api/materials/${audioClip.material_id}/file`
+          audioEl.src = apiUrl(`/api/materials/${audioClip.material_id}/file`)
           // Wait for metadata before seeking and playing, otherwise
           // currentTime and play() may fail silently
           const startAudio = () => {
@@ -774,7 +774,7 @@ export default {
             if (vClip.material_id !== loadedVideoId) {
               loadedVideoId = vClip.material_id
               previewLoaded.value = true
-              v.src = `/api/materials/${vClip.material_id}/file`
+              v.src = apiUrl(`/api/materials/${vClip.material_id}/file`)
             }
             v.volume = 0
             v.currentTime = lfv / 30
@@ -800,7 +800,7 @@ export default {
           const lf = Math.max(0, playStartFrame.value - audioClip.start)
           const seekTo = lf / 30
           audioEl.pause()
-          audioEl.src = `/api/materials/${audioClip.material_id}/file`
+          audioEl.src = apiUrl(`/api/materials/${audioClip.material_id}/file`)
           const startAudio = () => {
             audioEl.currentTime = seekTo
             audioEl.play().catch(e => console.warn('Audio play error:', e))
@@ -2410,7 +2410,7 @@ export default {
         return
       }
       if (audioEl) { audioEl.pause(); audioEl = null }
-      const el = new Audio(`/api/materials/${m.id}/file`)
+      const el = new Audio(apiUrl(`/api/materials/${m.id}/file`))
       el.onended = () => { playingAudioId.value = null; audioEl = null }
       el.onerror = () => { playingAudioId.value = null; audioEl = null }
       el.play().catch(() => { playingAudioId.value = null; audioEl = null })

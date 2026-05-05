@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { generatedApi, agentApi, materialApi } from '../../api/index.js'
+import { generatedApi, agentApi, materialApi, apiUrl } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 
 export default {
@@ -36,7 +36,7 @@ export default {
       }
       playingAudioId.value = materialId
       if (audioPlayer.value) {
-        audioPlayer.value.src = `/api/materials/${materialId}/file`
+        audioPlayer.value.src = apiUrl(`/api/materials/${materialId}/file`)
         audioPlayer.value.play().catch(() => {})
       }
     }

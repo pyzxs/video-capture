@@ -512,7 +512,7 @@
             <div class="manual-split-top">
               <!-- 视频播放器 -->
               <div class="manual-player-wrap">
-                <video ref="manualVideoEl" :src="`/api/videos/${splitVideoRef?.id}/file`"
+                <video ref="manualVideoEl" :src="$apiUrl(`/api/videos/${splitVideoRef?.id}/file`)"
                   @timeupdate="onManualTimeUpdate" @loadedmetadata="onManualLoaded"
                   controls class="manual-player"></video>
               </div>

@@ -120,7 +120,7 @@
 
 <script>
 import { ref, onMounted, computed } from 'vue'
-import { videoApi } from '../api/index.js'
+import { videoApi, apiUrl } from '../api/index.js'
 import { useToast } from '../composables/useToast.js'
 import Pagination from '../components/Pagination.vue'
 
@@ -143,7 +143,7 @@ export default {
 
     const previewVideoAction = (v) => {
       previewVideo.value = v
-      previewSrc.value = `/api/videos/${v.id}/file`
+      previewSrc.value = apiUrl(`/api/videos/${v.id}/file`)
       showPreview.value = true
     }
 
