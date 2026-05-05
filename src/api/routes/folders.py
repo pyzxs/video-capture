@@ -1,139 +1,68 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db
-from src.db.models import Folder, GeneratedVideo, Material, Video
+from src.api.services.folder_service import (
+    create_folder,
+    delete_folder,
+    list_folders,
+    move_generated_to_folder,
+    move_material_to_folder,
+    move_video_to_folder,
+    remove_generated_from_folder,
+    remove_material_from_folder,
+    remove_video_from_folder,
+    update_folder,
+)
 
 router = APIRouter(prefix="/folders", tags=["文件夹管理"])
 
 
 @router.get("")
-def list_folders(
-    folder_type: str | None = None,
-    q: str | None = None,
-    db: Session = Depends(get_db),
-):
-    query = db.query(Folder).order_by(Folder.id.desc())
-    if folder_type:
-        query = query.filter(Folder.folder_type == folder_type)
-    if q:
-        query = query.filter(Folder.name.contains(q))
-    items = query.all()
-    # 附加每个文件夹下的资源数量
-    result = []
-    for f in items:
-        result.append({
-            "id": f.id,
-            "name": f.name,
-            "folder_type": f.folder_type,
-            "created_at": f.created_at,
-            "video_count": db.query(Video).filter(Video.folder_id == f.id).count(),
-            "material_count": db.query(Material).filter(Material.folder_id == f.id).count(),
-            "generated_count": db.query(GeneratedVideo).filter(GeneratedVideo.folder_id == f.id).count(),
-        })
-    return {"items": result}
+def _list_folders(folder_type: str | None = None, q: str | None = None, db: Session = Depends(get_db)):
+    return list_folders(db, folder_type, q)
 
 
 @router.post("", status_code=201)
-def create_folder(name: str, folder_type: str = "video", db: Session = Depends(get_db)):
-    folder = Folder(name=name, folder_type=folder_type)
-    db.add(folder)
-    db.commit()
-    db.refresh(folder)
-    return folder
+def _create_folder(name: str, folder_type: str = "video", db: Session = Depends(get_db)):
+    return create_folder(db, name, folder_type)
 
 
 @router.put("/{folder_id}")
-def update_folder(folder_id: int, name: str, db: Session = Depends(get_db)):
-    f = db.query(Folder).get(folder_id)
-    if not f:
-        raise HTTPException(404, "文件夹不存在")
-    f.name = name
-    db.commit()
-    db.refresh(f)
-    return f
+def _update_folder(folder_id: int, name: str, db: Session = Depends(get_db)):
+    return update_folder(db, folder_id, name)
 
 
 @router.delete("/{folder_id}")
-def delete_folder(folder_id: int, db: Session = Depends(get_db)):
-    f = db.query(Folder).get(folder_id)
-    if not f:
-        raise HTTPException(404, "文件夹不存在")
-    # 将关联资源的 folder_id 置空
-    db.query(Video).filter(Video.folder_id == folder_id).update({"folder_id": None})
-    db.query(Material).filter(Material.folder_id == folder_id).update({"folder_id": None})
-    db.query(GeneratedVideo).filter(GeneratedVideo.folder_id == folder_id).update({"folder_id": None})
-    db.delete(f)
-    db.commit()
-    return {"ok": True}
+def _delete_folder(folder_id: int, db: Session = Depends(get_db)):
+    return delete_folder(db, folder_id)
 
-
-# ── 移动资源到文件夹 ──
 
 @router.put("/{folder_id}/videos/{video_id}")
-def move_video(folder_id: int, video_id: int, db: Session = Depends(get_db)):
-    f = db.query(Folder).get(folder_id)
-    if not f:
-        raise HTTPException(404, "文件夹不存在")
-    v = db.query(Video).get(video_id)
-    if not v:
-        raise HTTPException(404, "视频不存在")
-    v.folder_id = folder_id
-    db.commit()
-    return {"ok": True}
+def _move_video(folder_id: int, video_id: int, db: Session = Depends(get_db)):
+    return move_video_to_folder(db, folder_id, video_id)
 
 
 @router.put("/{folder_id}/materials/{material_id}")
-def move_material(folder_id: int, material_id: int, db: Session = Depends(get_db)):
-    f = db.query(Folder).get(folder_id)
-    if not f:
-        raise HTTPException(404, "文件夹不存在")
-    m = db.query(Material).get(material_id)
-    if not m:
-        raise HTTPException(404, "素材不存在")
-    m.folder_id = folder_id
-    db.commit()
-    return {"ok": True}
+def _move_material(folder_id: int, material_id: int, db: Session = Depends(get_db)):
+    return move_material_to_folder(db, folder_id, material_id)
 
 
 @router.put("/{folder_id}/generated/{gen_id}")
-def move_generated(folder_id: int, gen_id: int, db: Session = Depends(get_db)):
-    f = db.query(Folder).get(folder_id)
-    if not f:
-        raise HTTPException(404, "文件夹不存在")
-    g = db.query(GeneratedVideo).get(gen_id)
-    if not g:
-        raise HTTPException(404, "混剪视频不存在")
-    g.folder_id = folder_id
-    db.commit()
-    return {"ok": True}
+def _move_generated(folder_id: int, gen_id: int, db: Session = Depends(get_db)):
+    return move_generated_to_folder(db, folder_id, gen_id)
 
 
 @router.delete("/{folder_id}/videos/{video_id}")
-def remove_video_from_folder(folder_id: int, video_id: int, db: Session = Depends(get_db)):
-    v = db.query(Video).get(video_id)
-    if not v:
-        raise HTTPException(404, "视频不存在")
-    v.folder_id = None
-    db.commit()
-    return {"ok": True}
+def _remove_video_from_folder(folder_id: int, video_id: int, db: Session = Depends(get_db)):
+    return remove_video_from_folder(db, video_id)
 
 
 @router.delete("/{folder_id}/materials/{material_id}")
-def remove_material_from_folder(folder_id: int, material_id: int, db: Session = Depends(get_db)):
-    m = db.query(Material).get(material_id)
-    if not m:
-        raise HTTPException(404, "素材不存在")
-    m.folder_id = None
-    db.commit()
-    return {"ok": True}
+def _remove_material_from_folder(folder_id: int, material_id: int, db: Session = Depends(get_db)):
+    return remove_material_from_folder(db, material_id)
 
 
 @router.delete("/{folder_id}/generated/{gen_id}")
-def remove_generated_from_folder(folder_id: int, gen_id: int, db: Session = Depends(get_db)):
-    g = db.query(GeneratedVideo).get(gen_id)
-    if not g:
-        raise HTTPException(404, "混剪视频不存在")
-    g.folder_id = None
-    db.commit()
-    return {"ok": True}
+def _remove_generated_from_folder(folder_id: int, gen_id: int, db: Session = Depends(get_db)):
+    return remove_generated_from_folder(db, gen_id)

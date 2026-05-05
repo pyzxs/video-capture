@@ -74,6 +74,8 @@ DATABASE_URL = "sqlite:///storage/database/material.db"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+print(f"基础路径地址: {BASE_DIR}")
+
 OUTPUT_DIR = Path(BASE_DIR + "/storage/output")
 
 _fernet: Fernet | None = None

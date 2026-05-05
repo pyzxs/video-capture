@@ -12,7 +12,7 @@ export default {
     const autoProcessing = ref(false)
     const searching = ref(false)
     const searchResults = ref(null)
-    const autoForm = ref({ title: '', description: '', ratioIdx: '', voice: '', batchCount: 1 })
+    const autoForm = ref({ title: '', description: '', ratioIdx: '', voice: '', batchCount: 1, skipExpand: true })
     const ratioOptions = [
       { width: 1920, height: 1080 },
       { width: 1280, height: 720 },
@@ -40,6 +40,7 @@ export default {
         const ratio = autoForm.value.ratioIdx !== '' ? (ratioOptions[autoForm.value.ratioIdx] || {}) : {}
         const res = await generatedApi.autoSearch({
           description: autoForm.value.description,
+          skip_expand: autoForm.value.skipExpand,
           frame_width: ratio.width,
           frame_height: ratio.height,
         })
@@ -60,19 +61,18 @@ export default {
       try {
         const ratio = autoForm.value.ratioIdx !== '' ? (ratioOptions[autoForm.value.ratioIdx] || {}) : {}
         const count = autoForm.value.batchCount || 1
-        const payload = {
-          ...autoForm.value,
-          count,
+        const basePayload = {
+          title: autoForm.value.title,
+          description: autoForm.value.description,
+          skip_expand: autoForm.value.skipExpand,
           frame_width: ratio.width,
           frame_height: ratio.height,
           tts_voice: autoForm.value.voice || undefined,
-          voice: undefined,
-          ratioIdx: undefined,
           material_ids: searchResults.value?.materials?.length
             ? searchResults.value.materials.map(m => m.material_id) : undefined,
         }
         if (count > 1) {
-          const res = await generatedApi.autoBatchGenerate(payload)
+          const res = await generatedApi.autoBatchGenerate({ ...basePayload, count })
           const d = res.data
           const ok = d.count || 0
           const errs = d.errors?.length || 0
@@ -83,7 +83,7 @@ export default {
             toast.success(`批次生成完成：共 ${ok} 个混剪视频`)
           }
         } else {
-          await generatedApi.autoGenerate(payload)
+          await generatedApi.autoGenerate(basePayload)
           router.push('/mashups')
           toast.success('自动混剪完成')
         }
@@ -178,7 +178,8 @@ export default {
     const applyChatResult = (msgContent) => {
       if (msgContent) {
         autoForm.value.description = msgContent
-        toast.success('已应用到脚本')
+        autoForm.value.skipExpand = false
+        toast.success('已应用到脚本，已自动开启扩写')
       }
     }
 

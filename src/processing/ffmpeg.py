@@ -15,6 +15,7 @@ from src.utils import ensure_date_dir
 # ── 音频相关 ──
 ffmpeg_prefix = rf"{BASE_DIR}/bin/"
 
+print(f"音频处理工具地址: {ffmpeg_prefix}")
 
 def extract_audio(video_path: str, audio_path: str | None = None) -> str:
     """使用 ffmpeg 从视频中提取音频。

@@ -44,6 +44,13 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             <span>描述</span>
             <div class="card-header-actions">
+                <label class="expand-toggle" :class="{ on: !autoForm.skipExpand }" title="开启后由大模型自动扩写脚本，关闭则直接使用原文检索素材">
+                <span class="expand-toggle-label">扩写</span>
+                <span class="expand-toggle-track">
+                  <span class="expand-toggle-thumb"></span>
+                </span>
+                <input type="checkbox" :checked="!autoForm.skipExpand" @change="autoForm.skipExpand = !$event.target.checked" class="expand-toggle-input" />
+              </label>
               <span class="batch-label">生成批次</span>
               <input type="number" v-model.number="autoForm.batchCount" class="batch-input" min="1" @change="autoForm.batchCount = Math.max(1, Math.min(50, autoForm.batchCount || 1))" />
               <select v-model="autoForm.ratioIdx" class="inline-select">
@@ -81,6 +88,7 @@
                 </svg>
                 <span>AI 助手</span>
               </button>
+
             </div>
           </div>
           <div class="auto-card-body">

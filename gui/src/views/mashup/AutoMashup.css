@@ -126,6 +126,36 @@
 .agent-toggle-btn.active { background: #6c5ce7; color: #fff; border-color: #6c5ce7; }
 .agent-toggle-btn.active:hover { background: #5a4bd1; }
 
+/* ── Expand toggle ── */
+.expand-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+  background: #fff; cursor: pointer;
+  font-size: 11px; transition: all 0.15s;
+  user-select: none;
+}
+.expand-toggle:hover { border-color: #c4b5fd; }
+.expand-toggle-label {
+  color: #6b7280; font-weight: 500;
+}
+.expand-toggle.on .expand-toggle-label { color: #6c5ce7; }
+.expand-toggle-track {
+  display: inline-block; width: 28px; height: 14px;
+  border-radius: 7px; background: #d1d5db;
+  position: relative; transition: background 0.2s;
+}
+.expand-toggle.on .expand-toggle-track { background: #6c5ce7; }
+.expand-toggle-thumb {
+  position: absolute; top: 1px; left: 1px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; transition: transform 0.2s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.expand-toggle.on .expand-toggle-thumb { transform: translateX(14px); }
+.expand-toggle-input {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
+
 /* ── Markdown Editor ── */
 .md-editor {
   border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden;

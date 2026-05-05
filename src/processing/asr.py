@@ -1,28 +1,40 @@
 """ASR 语音转文本：本地 faster-whisper + CMS 代理双模式。"""
 import os
-from pathlib import Path
 
 import requests
 from faster_whisper import WhisperModel
 
 from src.config import get_config
-from src.logger import default_logger as logger
-from src.utils import get_filename_mime
 
 _model = None
 
 
 def get_asr_model():
-    """延迟加载 Whisper ASR 模型（全局缓存，只加载一次）。"""
+    """延迟加载 Whisper ASR 模型（全局缓存，只加载一次）。
+
+    优先使用本地 CTranslate2 格式模型；首次运行会自动从 HuggingFace
+    (Systran/faster-whisper-{size}) 下载，之后离线可用。
+    """
     global _model
     if _model is None:
         model_dir = str(get_config("whisper_model_dir").resolve())
-        _model = WhisperModel(
-            get_config("asr_model_size"),
-            device="cpu",
-            compute_type="int8",
-            download_root=model_dir,
-        )
+        model_size = get_config("asr_model_size")
+        for local_only in (True, False):
+            try:
+                _model = WhisperModel(
+                    model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    download_root=model_dir,
+                    local_files_only=local_only,
+                )
+                print(f"ASR 模型加载成功: {model_size} (local_only={local_only})")
+                break
+            except Exception as e:
+                if local_only:
+                    print(f"本地缓存未命中，尝试从 HuggingFace 下载模型...")
+                else:
+                    raise RuntimeError(f"ASR 模型下载失败: {e}") from e
     return _model
 
 
@@ -33,7 +45,9 @@ def transcribe(audio_path: str, language: str = "zh") -> list[dict]:
     """
     print("转录返回: {}".format(audio_path))
     model = get_asr_model()
+    print(f"获取模型: {model}")
     segs, info = model.transcribe(audio_path, language=language)
+    print(f"检测到的语言: {info.language}, 语言概率: {info.language_probability}")
 
     segments = []
     for seg in segs:
