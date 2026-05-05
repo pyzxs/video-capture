@@ -94,10 +94,9 @@ def create_app() -> FastAPI:
 
     def _import_config_to_db(db):
         """将 config.enc 中的配置导入到 settings 表（仅在首次启动时调用）。"""
-        from src.config import _load
+        from src.config import _load, _CONFIG_PATH, _LEGACY_PATH
 
-        from pathlib import Path
-        if not Path("config.enc").exists() and not Path("config.json").exists():
+        if not _CONFIG_PATH.exists() and not _LEGACY_PATH.exists():
             default_logger.warning("配置文件不存在，跳过导入")
             return
 

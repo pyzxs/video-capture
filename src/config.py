@@ -86,7 +86,7 @@ _TYPE_MAP = {
 }
 
 # 数据库连接（硬编码，需要在 DB 初始化前使用）
-DATABASE_URL = f"sqlite:///{BASE_DIR}/storage/database/material.db"
+DATABASE_URL = f"sqlite:///{Path(BASE_DIR) / 'storage' / 'database' / 'material.db'}"
 
 print(f"基础路径地址: {BASE_DIR}")
 

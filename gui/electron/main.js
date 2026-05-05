@@ -26,8 +26,7 @@ let backendReady = false
 // ── 后端 exe 路径 ──
 
 function getBackendExePath() {
-  const isDev = process.env.NODE_ENV !== 'production'
-  if (isDev) {
+  if (!app.isPackaged) {
     return null
   }
   const exeName = process.platform === 'win32' ? 'video-capture-server.exe' : 'video-capture-server'
@@ -143,8 +142,7 @@ function createWindow() {
     },
   })
 
-  const isDev = process.env.NODE_ENV !== 'production'
-  if (isDev) {
+  if (!app.isPackaged) {
     mainWindow.loadURL('http://localhost:5173')
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))

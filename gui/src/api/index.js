@@ -1,7 +1,9 @@
 import axios from 'axios'
 
+const BACKEND_URL = 'http://127.0.0.1:8090'
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: BACKEND_URL + '/api',
   timeout: 600000,
 })
 
@@ -11,7 +13,7 @@ export default api
 async function _sseStream(url, body, onProgress, onComplete, onError) {
   const controller = new AbortController()
   try {
-    const resp = await fetch(url, {
+    const resp = await fetch(BACKEND_URL + url, {
       method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,

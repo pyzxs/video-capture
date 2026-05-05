@@ -55,6 +55,11 @@ HIDDEN_IMPORTS = [
     "src.migrations",
     # 其他
     "cryptography",
+    "cryptography.fernet",
+    "cryptography.hazmat.primitives",
+    "cryptography.hazmat.primitives.kdf.pbkdf2",
+    "cryptography.hazmat.primitives.hashes",
+    "cryptography.hazmat.backends",
     "lxml",
     "aiohttp",
     "aiofiles",
@@ -62,6 +67,7 @@ HIDDEN_IMPORTS = [
 
 # 需要收集整个包的模块（含二进制 .dll/.so）
 COLLECT_PACKAGES = [
+    "cryptography",
     "ctranslate2",
     "faster_whisper",
     "huggingface_hub",
@@ -108,6 +114,7 @@ EXCLUDE_PACKAGES = [
 
 # 需要复制包元数据的模块（importlib.metadata.version 用）
 COPY_METADATA = [
+    "cryptography",
     "imageio",
     "moviepy",
     "numpy",
