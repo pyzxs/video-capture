@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const BACKEND_URL = 'http://127.0.0.1:8090'
+export const BACKEND_URL = 'http://127.0.0.1:8090'
+export function apiUrl(path) {
+  return BACKEND_URL + path
+}
 
 const api = axios.create({
   baseURL: BACKEND_URL + '/api',
