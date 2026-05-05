@@ -207,6 +207,7 @@ class AutoGenerateRequest(BaseModel):
     frame_height: int | None = None
     frame_rate: float | None = None
     tts_voice: str | None = None
+    audio_material_id: int | None = None
     folder_id: int | None = None
 
 

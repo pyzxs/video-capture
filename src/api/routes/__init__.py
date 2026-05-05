@@ -10,8 +10,10 @@ from src.api.routes.notes import router as notes_router
 from src.api.routes.profile import router as profile_router
 from src.api.routes.editor import router as editor_router
 from src.api.routes.export import router as export_router
+from src.api.routes.resources import router as resources_router
 
 api_router = APIRouter(prefix="/api")
+api_router.include_router(resources_router)
 api_router.include_router(videos_router)
 api_router.include_router(materials_router)
 api_router.include_router(generated_router)

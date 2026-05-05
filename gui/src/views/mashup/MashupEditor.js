@@ -65,6 +65,9 @@ export default {
     const form = ref({ title: '', script: '', materials: [] })
     const saving = ref(false)
     const generating = ref(false)
+    const generateProgress = ref({ current: 0, total: 0 })
+    const generatedVideos = ref([])
+    const generateAbort = ref(null)
     const editVoice = ref('')
 
     // ── Resources ──
@@ -2176,7 +2179,7 @@ export default {
     }
 
     // ── Save ──
-    const save = async () => {
+    const save = async (silent = false) => {
       if (generating.value) return
       if (!form.value.title.trim()) { toast.warning('请输入标题'); return }
       saving.value = true
@@ -2224,16 +2227,16 @@ export default {
         const payload = {
           title: form.value.title.trim(),
           script: form.value.script || '',
-          data: JSON.stringify({ tracks: trackData, showSubtitles: showSubtitles.value }),
+          data: JSON.stringify({ tracks: trackData, showSubtitles: showSubtitles.value && hasGroupTracks.value }),
           frame_width: currentRatio.value.width,
           frame_height: currentRatio.value.height,
         }
         if (isEditMode.value) {
           await generatedApi.update(editId.value, payload)
-          toast.success('已保存')
+          if (!silent) toast.success('已保存')
         } else {
           const res = await generatedApi.create(payload)
-          toast.success('创建成功')
+          if (!silent) toast.success('创建成功')
           router.replace({ name: 'MashupEditor', params: { id: res.data.id } })
         }
       } catch (e) {
@@ -2244,21 +2247,42 @@ export default {
     // ── Generate ──
     const generate = async () => {
       if (!isEditMode.value) return
-      // Check for group tracks with sub-groups
       const hasGroups = trackLines.value.some(l => l.type === 'group' && l.groups && l.groups.length > 0)
       generating.value = true
+      generatedVideos.value = []
+      generateProgress.value = { current: 0, total: 0 }
       try {
         if (hasGroups) {
-          const res = await generatedApi.batchGenerateGroups(editId.value)
-          const count = res.data?.count || 0
-          toast.success(`批量合成完成，共生成 ${count} 条视频`)
+          // 先保存
+          await save(true)
+          generateAbort.value = generatedApi.batchGenerateGroupsStream(
+            editId.value,
+            (event) => {
+              generateProgress.value = { current: event.current, total: event.total }
+              if (event.video) {
+                generatedVideos.value.push(event.video)
+              }
+            },
+            (event) => {
+              const count = event.count || 0
+              toast.success(`批量合成完成，共生成 ${count} 条视频`)
+              setTimeout(() => router.push({ name: 'Mashups' }), 1200)
+              generating.value = false
+            },
+            (err) => {
+              toast.error('合成失败: ' + err.message)
+              generating.value = false
+            }
+          )
         } else {
           await generatedApi.generate(editId.value, editVoice.value || undefined)
           toast.success('合成完成')
+          generating.value = false
         }
       } catch (e) {
         toast.error('合成失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
-      } finally { generating.value = false }
+        generating.value = false
+      }
     }
 
     // ── Navigation ──
@@ -2594,7 +2618,7 @@ export default {
 
     return {
       h, icons,
-      isEditMode, editId, form, saving, generating, editVoice,
+      isEditMode, editId, form, saving, generating, generateProgress, generatedVideos, editVoice,
       localMaterials, localFilteredMaterials, localLoading, localHasMore,
       videoMatItems, imageMatItems, audioMatItems, textMatItems,
       matSearch, matListRef, onMatScroll, activeMenu, menuItems, activeMenuLabel,

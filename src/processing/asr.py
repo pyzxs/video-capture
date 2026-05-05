@@ -61,6 +61,24 @@ def transcribe(audio_path: str, language: str = "zh") -> list[dict]:
     return segments
 
 
+def transcribe_return_text(audio_path: str, language: str = "zh") -> str:
+    """直接放回文本内容。
+
+    每个片段字典包含：start, end, text。
+    """
+    model = get_asr_model()
+    print(f"获取模型: {model}")
+    segs, info = model.transcribe(audio_path, language=language)
+    print(f"检测到的语言: {info.language}, 语言概率: {info.language_probability}")
+
+    segments = []
+    for seg in segs:
+        text = seg.text.strip()
+        if text:
+            segments.append(text)
+    return "\n".join(segments)
+
+
 def transcribe_by_api(audio_path: str, language="zh") -> str:
     """通过 CMS 代理调用 ASR 大模型语音转文本"""
     from src.auth import get_auth_headers

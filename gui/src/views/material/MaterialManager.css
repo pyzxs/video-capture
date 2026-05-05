@@ -162,6 +162,16 @@
   align-items: center;
 }
 
+/* Type + audio mode inline row */
+.type-label {
+  flex-shrink: 0;
+}
+.audio-mode-toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* Audio mode toggle */
 .audio-mode-toggle {
   display: flex;

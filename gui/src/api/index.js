@@ -7,6 +7,57 @@ const api = axios.create({
 
 export default api
 
+// SSE streaming helper
+async function _sseStream(url, body, onProgress, onComplete, onError) {
+  const controller = new AbortController()
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    })
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '')
+      onError(new Error(errText || `HTTP ${resp.status}`))
+      return { abort: () => {} }
+    }
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6))
+            if (event.type === 'progress') {
+              onProgress(event)
+            } else if (event.type === 'complete') {
+              onComplete(event)
+              return { abort: () => {} }
+            } else if (event.type === 'error') {
+              onError(new Error(event.message || '未知错误'))
+              return { abort: () => {} }
+            }
+          } catch (e) {
+            // skip parse errors
+          }
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      onError(e)
+    }
+  }
+  return { abort: () => controller.abort() }
+}
+
 // ── Videos ──
 export const videoApi = {
   list: (params) => api.get('/videos', { params }),
@@ -82,6 +133,11 @@ export const generatedApi = {
   autoBatchGenerate: (data) => api.post('/generated/auto-batch-generate', data, { timeout: 600000 }),
   autoSearch: (data) => api.post('/generated/auto-search', data, { timeout: 60000 }),
   batchGenerateGroups: (id) => api.post(`/generated/${id}/batch-generate-groups`, null, { timeout: 600000 }),
+  // SSE streaming versions — returns { abort } for cancellation
+  autoBatchGenerateStream: (data, onProgress, onComplete, onError) =>
+    _sseStream('/api/generated/auto-batch-generate-stream', data, onProgress, onComplete, onError),
+  batchGenerateGroupsStream: (id, onProgress, onComplete, onError) =>
+    _sseStream(`/api/generated/${id}/batch-generate-groups-stream`, null, onProgress, onComplete, onError),
 }
 
 // ── Folders ──
@@ -141,6 +197,12 @@ export const profileApi = {
 // ── Editor ──
 export const editorApi = {
   extractSubtitles: (clips) => api.post('/editor/extract-subtitles', { clips }, { timeout: 300000 }),
+}
+
+// ── Resources ──
+export const resourceApi = {
+  status: () => api.get('/resources/status'),
+  download: () => api.post('/resources/download'),
 }
 
 // ── Export ──

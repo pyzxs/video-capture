@@ -404,7 +404,7 @@ def concat_videos(
             "-safe", "0",
             "-i", str(list_path),
             "-fflags", "+genpts",
-            "-c:v", "libx264",
+            "-c:v", "libx264", "-preset", "veryfast",
             "-c:a", "aac",
             "-pix_fmt", "yuv420p",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1:1",
@@ -424,6 +424,94 @@ def concat_videos(
                 f"concat list:\n{concat_content}\n"
                 f"cmd: {' '.join(cmd)}\n"
                 f"{stderr}"
+            )
+    finally:
+        list_path.unlink(missing_ok=True)
+
+    return str(output)
+
+
+def concat_with_audio_and_subs(
+    clip_paths: list[str],
+    output_path: str,
+    audio_paths: list[str] | None = None,
+    ass_path: str | None = None,
+    target_width: int | None = None,
+    target_height: int | None = None,
+) -> str:
+    """拼接视频 + 混音 + 字幕压制，一次 ffmpeg 调用完成（避免多次重编码）。"""
+    import shutil
+
+    output = Path(output_path).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    n = len(clip_paths)
+    if n == 0:
+        raise ValueError("No clips to concatenate")
+
+    audio_paths = [ap for ap in (audio_paths or []) if Path(ap).exists()]
+    has_subs = ass_path and Path(ass_path).exists()
+
+    # 单素材且无额外音轨、无字幕 → 直接复制
+    if n == 1 and not audio_paths and not has_subs:
+        shutil.copy2(clip_paths[0], str(output))
+        return str(output)
+
+    # 写入 concat 列表
+    list_path = output.with_suffix(".concat.txt")
+    with open(list_path, "w", encoding="utf-8", newline="\n") as f:
+        for p in clip_paths:
+            f.write(f"file '{Path(p).resolve().as_posix()}'\n")
+
+    # 字幕文件：复制到输出目录，用纯文件名避免 Windows 盘符冒号问题
+    out_dir = output.parent
+    sub_name = None
+    if has_subs:
+        sub_dest = out_dir / Path(ass_path).name
+        if str(sub_dest.resolve()) != str(Path(ass_path).resolve()):
+            shutil.copy2(ass_path, sub_dest)
+        sub_name = sub_dest.name
+
+    cmd = [f"{ffmpeg_prefix}ffmpeg", "-y"]
+    cmd += ["-f", "concat", "-safe", "0", "-i", str(list_path)]
+    for ap in audio_paths:
+        cmd += ["-i", str(ap)]
+
+    n_inputs = 1 + len(audio_paths)
+    filters = []
+
+    # Video chain: 字幕 → 缩放 → 输出，至少需要一个 filter
+    video_filters = []
+    if sub_name:
+        video_filters.append(f"ass={sub_name}")
+    if target_width and target_height:
+        video_filters.append(f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,setsar=1")
+    if not video_filters:
+        video_filters.append("copy")
+    chain = ",".join(video_filters)
+    filters.append(f"[0:v]{chain}[v]")
+
+    # Audio chain: 有外部音频则混音，否则直通 concat 音轨
+    if audio_paths:
+        audio_labels = [f"[{i}:a]" for i in range(n_inputs)]
+        filters.append("".join(audio_labels) + f"amix=inputs={n_inputs}:duration=first[a]")
+    else:
+        filters.append("[0:a]anull[a]")
+
+    filter_graph = ";".join(filters)
+    cmd += ["-filter_complex", filter_graph]
+    cmd += ["-map", "[v]", "-map", "[a]"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    cmd += ["-c:a", "aac", "-pix_fmt", "yuv420p"]
+    cmd += ["-movflags", "+faststart"]
+    cmd.append(str(output))
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(out_dir))
+        if result.returncode != 0:
+            stderr = result.stderr[-1200:] if result.stderr else "(no stderr)"
+            raise RuntimeError(
+                f"ffmpeg concat with audio/subs failed (exit {result.returncode}):\n{stderr}"
             )
     finally:
         list_path.unlink(missing_ok=True)
@@ -454,6 +542,7 @@ def composite_subtitles(video_path: str, srt_path: str, output_path: str | None 
     cmd = [
         f"{ffmpeg_prefix}ffmpeg", "-i", str(video_path),
         "-vf", vf,
+        "-c:v", "libx264", "-preset", "veryfast",
         "-c:a", "copy",
         "-y", str(output_path),
     ]

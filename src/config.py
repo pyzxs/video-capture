@@ -39,7 +39,7 @@ _DEFAULTS = {
     "llm_provider": "deepseek",
     "asr_model_size": "base",
     "asr_api_model": "FunAudioLLM/SenseVoiceSmall",
-    "whisper_model_dir": "model/whisper",
+    "whisper_model_dir": "storage/model/whisper",
     "vector_db_path": "storage/database/chroma_db",
     "embedding_model": "BAAI/bge-m3",
     "tts_model": "FunAudioLLM/CosyVoice2-0.5B",

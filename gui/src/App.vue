@@ -103,18 +103,106 @@
     <ToastMessage />
     <ConfirmDialog />
     <PromptDialog />
+
+    <!-- 资源下载进度对话框 -->
+    <div v-if="showResourceDialog" class="modal-overlay">
+      <div class="modal resource-dialog" :class="{ 'resource-error': resourceError, 'resource-done': resourceReady }">
+        <!-- 图标区 -->
+        <div class="resource-icon">
+          <!-- 下载中 -->
+          <svg v-if="!resourceReady && !resourceError" class="resource-icon-svg downloading" viewBox="0 0 64 64" width="64" height="64" fill="none">
+            <circle cx="32" cy="32" r="28" stroke="var(--accent-light)" stroke-width="2.5" opacity="0.3"/>
+            <circle cx="32" cy="32" r="28" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="176" stroke-dashoffset="176" stroke-linecap="round">
+              <animate attributeName="stroke-dashoffset" from="176" to="0" dur="1.4s" repeatCount="indefinite"/>
+            </circle>
+            <path d="M32 20v18M24 32l8 8 8-8" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <!-- 完成 -->
+          <svg v-if="resourceReady" class="resource-icon-svg done" viewBox="0 0 64 64" width="64" height="64" fill="none">
+            <circle cx="32" cy="32" r="28" fill="#ecfdf5" stroke="#10b981" stroke-width="2.5"/>
+            <path d="M20 32l8 8 16-16" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <!-- 错误 -->
+          <svg v-if="resourceError" class="resource-icon-svg error" viewBox="0 0 64 64" width="64" height="64" fill="none">
+            <circle cx="32" cy="32" r="28" fill="#fef2f2" stroke="#ef4444" stroke-width="2.5"/>
+            <path d="M24 24l16 16M40 24l-16 16" stroke="#ef4444" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <!-- 标题 -->
+        <h3 class="resource-title">
+          {{ resourceError ? '下载失败' : (resourceReady ? '准备就绪' : '正在准备必要资源') }}
+        </h3>
+
+        <!-- 描述 -->
+        <p class="resource-desc" v-if="!resourceReady && !resourceError">
+          首次启动需下载运行环境，包含视频处理工具和语音识别模型，仅需一次。
+        </p>
+        <p class="resource-desc" v-if="resourceReady">
+          所有资源已就绪，可以开始使用了。
+        </p>
+        <p class="resource-desc error-desc" v-if="resourceError">
+          {{ resourceError }}
+        </p>
+
+        <!-- 下载清单 -->
+        <div class="resource-list" v-if="!resourceReady && !resourceError">
+          <div class="resource-item">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+            <span>ffmpeg / ffplay / ffprobe 视频处理工具</span>
+            <span class="resource-item-size">~560 MB</span>
+          </div>
+          <div class="resource-item">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/></svg>
+            <span>Whisper 语音识别模型 (base)</span>
+            <span class="resource-item-size">~280 MB</span>
+          </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="resource-progress" v-if="!resourceReady && !resourceError">
+          <div class="resource-progress-track">
+            <div class="resource-progress-fill" :style="{ width: resourcePercent + '%' }">
+              <div class="resource-progress-shimmer"></div>
+            </div>
+          </div>
+          <div class="resource-progress-info">
+            <span class="resource-percent">{{ resourcePercent }}%</span>
+            <span class="resource-mb">{{ (resourceProgress / 1048576).toFixed(1) }} / {{ (resourceTotal / 1048576).toFixed(1) }} MB</span>
+            <span class="resource-elapsed" v-if="resourceProgress > 0">{{ downloadElapsed }}</span>
+          </div>
+        </div>
+
+        <!-- 按钮 -->
+        <div class="resource-actions">
+          <template v-if="resourceReady">
+            <button class="btn btn-success btn-lg" @click="showResourceDialog = false">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+              开始使用 Video Capture
+            </button>
+          </template>
+          <template v-if="resourceError">
+            <button class="btn btn-outline btn-lg" @click="showResourceDialog = false">跳过</button>
+            <button class="btn btn-primary btn-lg" @click="retryDownload">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 1 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+              重新下载
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import { computed, watch } from 'vue'
+import { computed, watch, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import ToastMessage from './components/ToastMessage.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import PromptDialog from './components/PromptDialog.vue'
 import { useFolders } from './composables/useFolders.js'
 import { useToast } from './composables/useToast.js'
-import { folderApi } from './api/index.js'
+import { folderApi, resourceApi } from './api/index.js'
 
 export default {
   name: 'App',
@@ -186,6 +274,111 @@ export default {
       return ''
     }
 
+    // ── 资源下载状态 ──
+    const showResourceDialog = ref(false)
+    const resourceReady = ref(false)
+    const resourceProgress = ref(0)
+    const resourceTotal = ref(0)
+    const resourceError = ref('')
+    let _pollTimer = null
+
+    const resourcePercent = computed(() => {
+      if (resourceTotal.value <= 0) return 0
+      return Math.min(Math.round(resourceProgress.value * 100 / resourceTotal.value), 100)
+    })
+
+    const _downloadStart = ref(0)
+    const downloadElapsed = ref('')
+    let _elapsedTimer = null
+
+    function _startElapsed() {
+      _downloadStart.value = Date.now()
+      _elapsedTimer = setInterval(() => {
+        const s = Math.floor((Date.now() - _downloadStart.value) / 1000)
+        downloadElapsed.value = s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`
+      }, 1000)
+    }
+
+    function _stopElapsed() {
+      if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null }
+    }
+
+    async function checkAndDownload() {
+      try {
+        const { data } = await resourceApi.status()
+        if (data.ready) {
+          resourceReady.value = true
+          showResourceDialog.value = false
+          return
+        }
+        showResourceDialog.value = true
+        resourceError.value = data.error || ''
+        resourceProgress.value = data.progress || 0
+        resourceTotal.value = data.total || 0
+
+        if (!data.downloading && !data.error) {
+          await resourceApi.download()
+          _startPolling()
+        } else if (data.downloading) {
+          _startPolling()
+        }
+      } catch (e) {
+        showResourceDialog.value = true
+        resourceError.value = '无法连接服务器，请检查 CMS 地址配置'
+      }
+    }
+
+    function _startPolling() {
+      if (_pollTimer) return
+      _startElapsed()
+      _pollTimer = setInterval(async () => {
+        try {
+          const { data } = await resourceApi.status()
+          resourceProgress.value = data.progress || 0
+          resourceTotal.value = data.total || 0
+          resourceError.value = data.error || ''
+
+          if (data.ready) {
+            clearInterval(_pollTimer)
+            _pollTimer = null
+            _stopElapsed()
+            resourceReady.value = true
+          } else if (data.error) {
+            clearInterval(_pollTimer)
+            _pollTimer = null
+            _stopElapsed()
+          }
+        } catch (e) {
+          // ignore poll errors
+        }
+      }, 800)
+    }
+
+    async function retryDownload() {
+      resourceError.value = ''
+      resourceProgress.value = 0
+      resourceTotal.value = 0
+      downloadElapsed.value = ''
+      try {
+        await resourceApi.download()
+        _startPolling()
+      } catch (e) {
+        resourceError.value = '下载请求失败: ' + (e.message || e)
+      }
+    }
+
+    onMounted(() => {
+      checkAndDownload()
+    })
+
+    onBeforeUnmount(() => {
+      if (_pollTimer) {
+        clearInterval(_pollTimer)
+        _pollTimer = null
+      }
+      _stopElapsed()
+    })
+
     return {
       showSubSidebar,
       folders,
@@ -197,6 +390,14 @@ export default {
       minimizeWindow: () => window.electronAPI?.minimize(),
       maximizeWindow: () => window.electronAPI?.maximize(),
       closeWindow: () => window.electronAPI?.close(),
+      showResourceDialog,
+      resourceReady,
+      resourceProgress,
+      resourceTotal,
+      resourceError,
+      resourcePercent,
+      downloadElapsed,
+      retryDownload,
     }
   },
 }
@@ -695,6 +896,169 @@ nav { flex: 1; padding: 12px 0; display: flex; flex-direction: column; align-ite
   margin: 4px 0 8px;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+/* ── Resource Download Dialog ── */
+.resource-dialog {
+  width: 480px;
+  text-align: center;
+  padding: 36px 32px 28px;
+}
+
+.resource-icon { margin-bottom: 16px; }
+.resource-icon-svg { display: inline-block; }
+.resource-icon-svg.downloading { animation: resource-pulse 2s ease-in-out infinite; }
+.resource-icon-svg.done { animation: resource-pop 0.4s ease; }
+.resource-icon-svg.error { animation: resource-pop 0.3s ease; }
+
+@keyframes resource-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.85; }
+}
+@keyframes resource-pop {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.resource-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.resource-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.error-desc {
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* 下载清单 */
+.resource-list {
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.resource-item:first-child { padding-top: 0; }
+.resource-item:last-child { padding-bottom: 0; }
+.resource-item + .resource-item { border-top: 1px solid #f0f0f0; }
+.resource-item svg { flex-shrink: 0; color: var(--text-secondary); }
+.resource-item span:first-of-type { flex: 1; }
+.resource-item-size {
+  font-size: 11px;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+/* 进度条 */
+.resource-progress { margin-bottom: 8px; }
+.resource-progress-track {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.resource-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6c5ce7 0%, #a29bfe 60%, #6c5ce7 100%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  position: relative;
+  overflow: hidden;
+  animation: resource-gradient 2s linear infinite;
+}
+
+@keyframes resource-gradient {
+  from { background-position: 200% 0; }
+  to { background-position: 0 0; }
+}
+
+.resource-progress-shimmer {
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: resource-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes resource-shimmer {
+  from { left: -100%; }
+  to { left: 200%; }
+}
+
+.resource-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.resource-percent {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.resource-mb {
+  color: #9ca3af;
+}
+
+.resource-elapsed {
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 按钮区 */
+.resource-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.btn-lg {
+  padding: 10px 24px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.btn-outline {
+  background: #fff;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn-outline:hover:not(:disabled) {
+  background: #f9fafb;
+  color: var(--text);
+  border-color: #d1d5db;
 }
 .progress-bar { flex: 1; height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
 .progress-fill {

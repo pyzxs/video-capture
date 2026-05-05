@@ -180,7 +180,7 @@ def _write_asr_ass(segments: list[dict], output_path: str, canvas_w: int = 1920,
                  "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
                  "Alignment, MarginL, MarginR, MarginV, Encoding\n")
         f.write("Style: Default,Noto Sans SC,36,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,"
-                 "0,0,0,0,100,100,0,0,1,1,1,2,10,10,10,1\n\n")
+                 "0,0,0,0,100,100,0,0,1,0,0,2,10,10,10,1\n\n")
         f.write("[Events]\n")
         f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
         for start_sec, end_sec, text in entries:
@@ -253,7 +253,7 @@ def _make_segment(clip: dict, fp: str, fps: int, gen_id: int, temp_dir: str) -> 
         "-ss", f"{start_sec:.3f}",
         "-i", str(fp),
         "-t", f"{dur_sec:.3f}",
-        "-c:v", "libx264", "-crf", "18",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
         "-c:a", "aac",
         "-pix_fmt", "yuv420p",
         "-avoid_negative_ts", "make_zero",
@@ -478,6 +478,17 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
     prefix_file = hashlib.md5((script + str(uuid.uuid4())).encode()).hexdigest()
     concat_output = str(ensure_date_dir(get_config("mixed_dir"), f"{prefix_file}_concat.mp4"))
     concat_videos(clip_paths, concat_output, data.frame_width, data.frame_height)
+
+    # 3.5 混入背景音频（如果选择了音频素材）
+    if data.audio_material_id:
+        audio_mat = db.query(Material).get(data.audio_material_id)
+        if audio_mat and Path(audio_mat.filepath).exists():
+            try:
+                from src.processing.ffmpeg import mix_audio_tracks
+                concat_output = mix_audio_tracks(concat_output, [audio_mat.filepath])
+                logger.info("  → 已混入背景音频: %s", audio_mat.filename or audio_mat.filepath)
+            except Exception as e:
+                logger.warning("  → 背景音频混入失败: %s", e)
 
     total_dur = get_video_duration(concat_output) or 30.0
     max_chars = int(total_dur * 4)
@@ -775,11 +786,11 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
             logger.warning("字幕压制失败（不影响生成）: %s", e)
 
     show_subtitles = clip_data.get("showSubtitles", False)
-    if show_subtitles:
+    if show_subtitles and not text_clips:
         try:
             from src.processing.subtitle import get_timestamps
             from src.processing.ffmpeg import composite_subtitles
-            logger.info("开始自动提取字幕（ASR）...")
+            logger.info("无文字轨道，开始自动提取字幕（ASR）...")
             segments = get_timestamps(output, language="zh")
             if segments:
                 ass_path = str(Path(temp_dir).parent / f"asr_subs_{gen.id}.ass")
@@ -839,7 +850,6 @@ def dub_generated_video(db: Session, gen_id: int, data: GenDubRequest) -> dict:
 def batch_generate_groups(db: Session, gen_id: int) -> dict:
     import itertools
     import subprocess
-    from src.processing.ffmpeg import mix_audio_tracks, concat_videos
     from src.processing.ffmpeg import ffmpeg_prefix as ff
 
     gen = db.query(GeneratedVideo).get(gen_id)
@@ -890,7 +900,18 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
         raise fail_response(status_code=400, message="组内没有可用的视频素材")
 
     combinations = list(itertools.product(*groups_order))
-    logger.info("组素材批量生成: %d 组, %d 种组合", len(groups_order), len(combinations))
+    seen = set()
+    unique_combos = []
+    for combo in combinations:
+        key = tuple((v.get("id"), a.get("id") if a else None) for v, a in combo)
+        if key not in seen:
+            seen.add(key)
+            unique_combos.append(combo)
+    dup_count = len(combinations) - len(unique_combos)
+    combinations = unique_combos
+    logger.info("组素材批量生成: %d 组, %d 种组合%s",
+                len(groups_order), len(combinations),
+                f"（去重 {dup_count} 个）" if dup_count else "")
 
     temp_dir = ensure_date_dir(get_config("mixed_dir"), "segments")
     Path(temp_dir).mkdir(parents=True, exist_ok=True)
@@ -940,6 +961,7 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
                 continue
 
             if aclip:
+                from src.processing.ffmpeg import mix_audio_tracks
                 fp_a = aclip.get("filepath", "")
                 if not fp_a or not Path(fp_a).exists():
                     mid = aclip.get("material_id")
@@ -970,7 +992,30 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
 
         suffix = f"_{combo_idx + 1}" if len(combinations) > 1 else ""
         output = str(ensure_date_dir(get_config("mixed_dir"), f"remix_{gen_id}_g{suffix}.mp4"))
-        concat_videos(all_segments, output, target_width=target_w, target_height=target_h)
+
+        ass_path = None
+        if text_clips:
+            ass_path = str(Path(temp_dir).parent / f"subs_{gen_id}_g{combo_idx}.ass")
+            _write_ass(text_clips, fps, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
+
+        try:
+            from src.processing.ffmpeg import concat_with_audio_and_subs
+            output = concat_with_audio_and_subs(
+                all_segments, output,
+                audio_paths=audio_paths if audio_paths else None,
+                ass_path=ass_path,
+                target_width=target_w,
+                target_height=target_h,
+            )
+        except Exception as e:
+            logger.warning("拼接+混音+字幕合并失败: %s", e)
+            continue
+
+        try:
+            if ass_path:
+                Path(ass_path).unlink(missing_ok=True)
+        except Exception:
+            pass
 
         for sp in all_segments:
             try:
@@ -979,32 +1024,18 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
             except Exception:
                 pass
 
-        if audio_paths:
+        show_subtitles = clip_data.get("showSubtitles", False)
+        if show_subtitles and not text_clips:
             try:
-                output = mix_audio_tracks(output, audio_paths)
-            except Exception as e:
-                logger.warning("音频混入失败: %s", e)
-
-        if text_clips:
-            try:
-                from src.processing.ffmpeg import composite_subtitles
-                ass_path = str(Path(temp_dir).parent / f"subs_{gen_id}_g{combo_idx}.ass")
-                _write_ass(text_clips, fps, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
-                output = composite_subtitles(output, ass_path)
+                from src.processing.ffmpeg import composite_subtitles, extract_audio
+                from src.processing.asr import transcribe
+                logger.info("批量生成直接走 ASR 提取字幕...")
+                audio_path = extract_audio(output)
+                segments = transcribe(audio_path, language="zh")
                 try:
-                    Path(ass_path).unlink(missing_ok=True)
+                    Path(audio_path).unlink(missing_ok=True)
                 except Exception:
                     pass
-            except Exception as e:
-                logger.warning("字幕压制失败: %s", e)
-
-        show_subtitles = clip_data.get("showSubtitles", False)
-        if show_subtitles:
-            try:
-                from src.processing.subtitle import get_timestamps
-                from src.processing.ffmpeg import composite_subtitles
-                logger.info("开始自动提取字幕（ASR）...")
-                segments = get_timestamps(output, language="zh")
                 if segments:
                     ass_path = str(Path(temp_dir).parent / f"asr_subs_{gen_id}_g{combo_idx}.ass")
                     _write_asr_ass(segments, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
@@ -1066,3 +1097,294 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
         raise fail_response(status_code=400, message="没有成功生成任何视频")
 
     return {"count": len(results), "results": results}
+
+
+def batch_generate_groups_stream(db: Session, gen_id: int):
+    """SSE 流式版本：逐条生成并实时推送进度"""
+    import itertools
+    import subprocess
+    from src.processing.ffmpeg import ffmpeg_prefix as ff
+
+    gen = db.query(GeneratedVideo).get(gen_id)
+    if not gen:
+        yield _sse_event("error", {"message": "混剪视频不存在"})
+        return
+
+    try:
+        clip_data = json.loads(gen.data) if gen.data else {}
+    except Exception:
+        clip_data = {}
+    tracks = clip_data.get("tracks", [])
+
+    group_tracks = [t for t in tracks if t.get("type") == "group" and t.get("groups")]
+    if not group_tracks:
+        # 无组轨道：走普通生成，直接返回一条结果
+        try:
+            result = _gen_to_dict(_execute_generate(gen, db))
+            yield _sse_event("progress", {"current": 1, "total": 1, "video": result})
+            yield _sse_event("complete", {"count": 1, "results": [result]})
+        except fail_response as e:
+            yield _sse_event("error", {"message": str(e.detail)})
+        except Exception as e:
+            yield _sse_event("error", {"message": str(e)})
+        return
+
+    non_group_tracks = [t for t in tracks if t.get("type") != "group"]
+
+    fps = gen.frame_rate or 30
+    target_w = gen.frame_width or None
+    target_h = gen.frame_height or None
+
+    groups_order = []
+    group_origins = []
+    for gt_idx, gt in enumerate(group_tracks):
+        clip_map = {c["id"]: c for c in gt.get("list", [])}
+        for g_idx, g in enumerate(gt.get("groups", [])):
+            videos = g.get("groupVideos", []) or []
+            audios = g.get("groupAudios", []) or []
+            if not videos:
+                continue
+            pairs = []
+            for vid in videos:
+                vclip = clip_map.get(vid)
+                if not vclip:
+                    continue
+                if audios:
+                    for aid in audios:
+                        aclip = clip_map.get(aid)
+                        pairs.append((vclip, aclip))
+                else:
+                    pairs.append((vclip, None))
+            if pairs:
+                groups_order.append(pairs)
+                group_origins.append((gt_idx, g_idx))
+
+    if not groups_order:
+        yield _sse_event("error", {"message": "组内没有可用的视频素材"})
+        return
+
+    combinations = list(itertools.product(*groups_order))
+    seen = set()
+    unique_combos = []
+    for combo in combinations:
+        key = tuple((v.get("id"), a.get("id") if a else None) for v, a in combo)
+        if key not in seen:
+            seen.add(key)
+            unique_combos.append(combo)
+    combinations = unique_combos
+    total = len(combinations)
+    logger.info("组素材批量生成(SSE): %d 组, %d 种组合", len(groups_order), total)
+
+    temp_dir = ensure_date_dir(get_config("mixed_dir"), "segments")
+    Path(temp_dir).mkdir(parents=True, exist_ok=True)
+
+    results = []
+    for combo_idx, combo in enumerate(combinations):
+        segment_paths = []
+        audio_paths = []
+        text_clips = []
+
+        for track in non_group_tracks:
+            for clip in track.get("list", []):
+                ctype = clip.get("type", "")
+                if ctype == "text":
+                    text_clips.append(clip)
+                    continue
+                fp = clip.get("filepath", "")
+                if not fp or not Path(fp).exists():
+                    mid = clip.get("material_id")
+                    if mid is not None:
+                        m = db.query(Material).get(mid)
+                        if m and Path(m.filepath).exists():
+                            fp = m.filepath
+                if not fp or not Path(fp).exists():
+                    continue
+                if ctype == "audio":
+                    audio_paths.append(fp)
+                    continue
+                seg = _make_segment(clip, fp, fps, gen_id, str(temp_dir))
+                if seg:
+                    segment_paths.append(seg)
+
+        group_segments = []
+        for vclip, aclip in combo:
+            fp_v = vclip.get("filepath", "")
+            if not fp_v or not Path(fp_v).exists():
+                mid = vclip.get("material_id")
+                if mid is not None:
+                    m = db.query(Material).get(mid)
+                    if m and Path(m.filepath).exists():
+                        fp_v = m.filepath
+            if not fp_v or not Path(fp_v).exists():
+                continue
+
+            vid_seg = _make_segment(vclip, fp_v, fps, gen_id, str(temp_dir))
+            if not vid_seg:
+                continue
+
+            if aclip:
+                from src.processing.ffmpeg import mix_audio_tracks
+                fp_a = aclip.get("filepath", "")
+                if not fp_a or not Path(fp_a).exists():
+                    mid = aclip.get("material_id")
+                    if mid is not None:
+                        m = db.query(Material).get(mid)
+                        if m and Path(m.filepath).exists():
+                            fp_a = m.filepath
+                if fp_a and Path(fp_a).exists():
+                    vid_dur = (vclip.get("end", 0) - vclip.get("start", 0)) / fps
+                    audio_seg = _extract_audio_segment(fp_a, vid_dur, gen_id, temp_dir)
+                    if audio_seg:
+                        try:
+                            vid_seg = mix_audio_tracks(vid_seg, [audio_seg])
+                            try:
+                                Path(audio_seg).unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            logger.warning("组内音频混入失败: %s", e)
+
+            group_segments.append(vid_seg)
+
+        if not group_segments:
+            logger.warning("组合 %d 没有可用视频素材，跳过", combo_idx + 1)
+            continue
+
+        all_segments = segment_paths + group_segments
+
+        suffix = f"_{combo_idx + 1}" if len(combinations) > 1 else ""
+        output = str(ensure_date_dir(get_config("mixed_dir"), f"remix_{gen_id}_g{suffix}.mp4"))
+
+        ass_path = None
+        if text_clips:
+            ass_path = str(Path(temp_dir).parent / f"subs_{gen_id}_g{combo_idx}.ass")
+            _write_ass(text_clips, fps, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
+
+        try:
+            from src.processing.ffmpeg import concat_with_audio_and_subs
+            output = concat_with_audio_and_subs(
+                all_segments, output,
+                audio_paths=audio_paths if audio_paths else None,
+                ass_path=ass_path,
+                target_width=target_w,
+                target_height=target_h,
+            )
+        except Exception as e:
+            logger.warning("拼接+混音+字幕合并失败: %s", e)
+            continue
+
+        try:
+            if ass_path:
+                Path(ass_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        for sp in all_segments:
+            try:
+                if sp.startswith(str(temp_dir)):
+                    Path(sp).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        show_subtitles = clip_data.get("showSubtitles", False)
+        if show_subtitles and not text_clips:
+            try:
+                from src.processing.ffmpeg import composite_subtitles, extract_audio
+                from src.processing.asr import transcribe
+                logger.info("批量生成直接走 ASR 提取字幕...")
+                audio_path = extract_audio(output)
+                segments = transcribe(audio_path, language="zh")
+                try:
+                    Path(audio_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                if segments:
+                    ass_path = str(Path(temp_dir).parent / f"asr_subs_{gen_id}_g{combo_idx}.ass")
+                    _write_asr_ass(segments, ass_path, canvas_w=target_w or 1920, canvas_h=target_h or 1080)
+                    output = composite_subtitles(output, ass_path)
+                    try:
+                        Path(ass_path).unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    logger.info("ASR 字幕压制完成，共 %d 条", len(segments))
+                else:
+                    logger.warning("ASR 未提取到字幕内容")
+            except Exception as e:
+                logger.warning("自动字幕提取失败（不影响生成）: %s", e)
+
+        thumb = generate_thumbnail(output)
+
+        reconstructed_tracks = list(non_group_tracks)
+        resolved_gt = {}
+        for i, (vclip, aclip) in enumerate(combo):
+            gt_idx, g_idx = group_origins[i]
+            if gt_idx not in resolved_gt:
+                gt = group_tracks[gt_idx]
+                resolved_gt[gt_idx] = {
+                    "type": gt.get("type", "group"),
+                    "list": [],
+                    "groups": [],
+                }
+            entry = resolved_gt[gt_idx]
+            existing_ids = {c["id"] for c in entry["list"]}
+            if vclip["id"] not in existing_ids:
+                entry["list"].append(vclip)
+                existing_ids.add(vclip["id"])
+            if aclip and aclip["id"] not in existing_ids:
+                entry["list"].append(aclip)
+            group_entry = {"groupVideos": [vclip["id"]], "groupAudios": [aclip["id"]] if aclip else []}
+            entry["groups"].append(group_entry)
+        for gt_idx in sorted(resolved_gt.keys()):
+            reconstructed_tracks.append(resolved_gt[gt_idx])
+        reconstructed_data = json.dumps({"tracks": reconstructed_tracks})
+
+        combo_gen = GeneratedVideo(
+            title=f"{gen.title or '混剪'}{suffix}",
+            script=gen.script,
+            data=reconstructed_data,
+            output_filepath=output,
+            frame_width=gen.frame_width,
+            frame_height=gen.frame_height,
+            frame_rate=gen.frame_rate,
+            status="completed",
+            thumbnail=thumb,
+            folder_id=gen.folder_id,
+        )
+        db.add(combo_gen)
+        db.commit()
+        db.refresh(combo_gen)
+        result = _gen_to_dict(combo_gen)
+        results.append(result)
+
+        yield _sse_event("progress", {"current": combo_idx + 1, "total": total, "video": result})
+
+    if not results:
+        yield _sse_event("error", {"message": "没有成功生成任何视频"})
+    else:
+        yield _sse_event("complete", {"count": len(results), "results": results})
+
+
+def auto_batch_generate_stream(data: AutoBatchGenerateRequest, db: Session):
+    """SSE 流式版本：逐条自动生成并实时推送进度"""
+    count = max(1, min(data.count, 50))
+
+    results = []
+    for i in range(count):
+        try:
+            result = _execute_auto_generate(data, db)
+            results.append(result)
+            yield _sse_event("progress", {"current": i + 1, "total": count, "video": result})
+        except fail_response as e:
+            yield _sse_event("error", {"message": str(e.detail)})
+            return
+        except Exception as e:
+            logger.warning("第 %d 条生成失败: %s", i + 1, e)
+
+    if not results:
+        yield _sse_event("error", {"message": "没有成功生成任何视频"})
+    else:
+        yield _sse_event("complete", {"count": len(results), "results": results})
+
+
+def _sse_event(event_type: str, data: dict) -> str:
+    return f"data: {json.dumps({'type': event_type, **data}, ensure_ascii=False)}\n\n"

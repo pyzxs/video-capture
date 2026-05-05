@@ -772,12 +772,46 @@
       </div>
     </div>
 
-    <!-- Saving overlay -->
+    <!-- Saving / non-group generating toast -->
     <teleport to="body">
       <transition name="fade">
-        <div v-if="saving || generating" class="global-toast">
+        <div v-if="saving || (generating && !hasGroupTracks)" class="global-toast">
           <div class="toast-spinner"></div>
           <span>{{ saving ? '保存中...' : '合成中...' }}</span>
+        </div>
+      </transition>
+    </teleport>
+
+    <!-- Group generate progress modal -->
+    <teleport to="body">
+      <transition name="fade">
+        <div v-if="generating && hasGroupTracks" class="generate-modal-overlay">
+          <div class="generate-modal">
+            <div class="generate-modal-header">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>批量合成中</span>
+              <span class="generate-modal-count">{{ generateProgress.current }} / {{ generateProgress.total || '?' }}</span>
+            </div>
+            <div class="generate-modal-body">
+              <div class="generate-progress-bar">
+                <div class="generate-progress-fill" :style="{ width: generateProgress.total ? (generateProgress.current / generateProgress.total * 100) + '%' : '30%', animation: generateProgress.total ? 'none' : 'progress-indeterminate 1.5s ease infinite' }"></div>
+              </div>
+              <p class="generate-modal-text">正在生成组合视频，请稍候...</p>
+              <!-- Generated video list -->
+              <div v-if="generatedVideos.length > 0" class="generate-video-list">
+                <div class="generate-video-list-header">已生成视频 ({{ generatedVideos.length }})</div>
+                <div class="generate-video-list-body">
+                  <div v-for="v in generatedVideos" :key="v.id" class="generate-video-item">
+                    <img v-if="v.thumbnail" :src="v.thumbnail" class="generate-video-thumb" />
+                    <div class="generate-video-info">
+                      <div class="generate-video-title">{{ v.title || '未命名' }}</div>
+                      <div class="generate-video-meta">{{ v.duration?.toFixed(1) }}s · {{ v.frame_width }}×{{ v.frame_height }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </transition>
     </teleport>

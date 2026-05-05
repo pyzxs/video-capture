@@ -22,7 +22,7 @@ from src.config import get_config
 from src.db.models import Video
 from src.logger import default_logger as logger
 from src.pipelines import download
-from src.processing.asr import transcribe_by_api
+from src.processing.asr import transcribe_return_text
 from src.processing.ffmpeg import get_video_duration, get_video_metadata, extract_audio
 from src.processing.paragraph import merge_into_paragraphs
 from src.processing.subtitle import get_timestamps
@@ -143,7 +143,7 @@ def upload_video(
         try:
             try:
                 audio_path = extract_audio(filepath)
-                content = transcribe_by_api(audio_path, language=language)
+                content = transcribe_return_text(audio_path, language=language)
             except Exception as e:
                 logger.error(f"ASR 提取语音失败:{e}")
         except Exception as e:
@@ -197,7 +197,7 @@ async def download_video_service(db: Session, data: VideoDownloadRequest) -> dic
         try:
             try:
                 audio_path = extract_audio(str(filepath))
-                content = transcribe_by_api(audio_path)
+                content = transcribe_return_text(audio_path)
             except Exception as e:
                 logger.error(f"ASR 提取语音失败:{e}")
         except Exception as e:
@@ -350,7 +350,6 @@ def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, 
     import subprocess
     from src.processing.ffmpeg import split_video_clip
     from src.db.models import Material as MaterialModel
-    from src.processing.asr import transcribe_by_api
     from src.config import BASE_DIR
     from src.api.schemas import MaterialOut
 
@@ -391,7 +390,7 @@ def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, 
                     "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                     "-y", seg_audio,
                 ], check=True, capture_output=True)
-                text = transcribe_by_api(seg_audio)
+                text = transcribe_return_text(seg_audio)
             except Exception:
                 text = ""
             finally:

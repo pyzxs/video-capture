@@ -194,7 +194,12 @@
 
           <template v-else>
             <!-- 新增模式 -->
-            <label>类型 <select v-model="form.type"><option>video</option><option>image</option><option>audio</option></select></label>
+            <label class="type-label">类型 <select v-model="form.type"><option>video</option><option>image</option><option>audio</option></select></label>
+            <div v-if="form.type === 'audio'" class="audio-mode-toggle-inline">
+              <span class="audio-mode-label">语音素材</span>
+              <label class="radio-inline"><input type="radio" v-model="audioMode" value="upload" /> 上传</label>
+              <label class="radio-inline"><input type="radio" v-model="audioMode" value="synthesize" /> 合成</label>
+            </div>
 
             <!-- Video: upload zone + content textarea -->
             <template v-if="form.type === 'video'">
@@ -240,18 +245,6 @@
 
             <!-- Audio: upload OR synthesize -->
             <template v-if="form.type === 'audio'">
-              <div class="audio-mode-toggle">
-                <span class="audio-mode-label">语音素材</span>
-                <div class="audio-mode-options">
-                  <label class="radio-inline">
-                    <input type="radio" v-model="audioMode" value="upload" /> 上传
-                  </label>
-                  <label class="radio-inline">
-                    <input type="radio" v-model="audioMode" value="synthesize" /> 合成
-                  </label>
-                </div>
-              </div>
-
               <!-- Upload mode -->
               <template v-if="audioMode === 'upload'">
                 <div class="upload-zone" @drop.prevent="onDrop" @dragover.prevent

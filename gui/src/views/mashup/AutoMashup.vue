@@ -23,7 +23,93 @@
 
     <!-- ===== BODY ===== -->
     <div class="auto-body">
-      <!-- Left: Main Form -->
+      <!-- Left: Toolbar -->
+      <aside class="auto-toolbar">
+        <div class="toolbar-group">
+          <label class="toolbar-label">扩写</label>
+          <label class="expand-toggle" :class="{ on: !autoForm.skipExpand }" title="开启后由大模型自动扩写脚本">
+            <span class="expand-toggle-track">
+              <span class="expand-toggle-thumb"></span>
+            </span>
+            <input type="checkbox" :checked="!autoForm.skipExpand" @change="autoForm.skipExpand = !$event.target.checked" class="expand-toggle-input" />
+          </label>
+        </div>
+
+        <div class="toolbar-group">
+          <label class="toolbar-label">生成批次</label>
+          <input type="number" v-model.number="autoForm.batchCount" class="toolbar-input" min="1" @change="autoForm.batchCount = Math.max(1, Math.min(50, autoForm.batchCount || 1))" />
+        </div>
+
+        <div class="toolbar-group">
+          <label class="toolbar-label">画面比率</label>
+          <select v-model="autoForm.ratioIdx" class="toolbar-select">
+            <option value="">默认</option>
+            <option value="0">1920×1080 (16:9)</option>
+            <option value="1">1280×720 (16:9)</option>
+            <option value="2">1080×1920 (9:16) 抖音</option>
+            <option value="3">720×1280 (9:16)</option>
+            <option value="4">540×960 (9:16)</option>
+            <option value="5">1080×2340 全面屏</option>
+            <option value="6">1080×1350 (4:5)</option>
+            <option value="7">1080×1440 (3:4)</option>
+            <option value="8">1080×1080 (1:1)</option>
+            <option value="9">640×640 (1:1)</option>
+            <option value="10">1920×960 (2:1)</option>
+            <option value="11">1440×1080 (4:3)</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <label class="toolbar-label">默认音色</label>
+          <select v-model="autoForm.voice" class="toolbar-select">
+            <option value="">系统默认</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:alex">亚力克斯</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:anna">安娜</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:bella">贝拉</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:benjamin">本杰明</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:charles">查尔斯</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:claire">克莱尔</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:david">大卫</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:diana">黛安娜</option>
+            <option value="FunAudioLLM/CosyVoice2-0.5B:longfei">龙飞</option>
+          </select>
+        </div>
+
+        <div class="toolbar-group">
+          <label class="toolbar-label">背景音频</label>
+          <div class="toolbar-audio-row">
+            <select v-model="autoForm.audioMaterialId" class="toolbar-select toolbar-audio-select" @focus="loadAudioMaterials">
+              <option value="">无</option>
+              <option v-for="m in audioMaterials" :key="m.id" :value="m.id">{{ m.filename || '音频 ' + m.id }}</option>
+            </select>
+            <button
+              class="toolbar-audio-play-btn"
+              :class="{ playing: playingAudioId === autoForm.audioMaterialId }"
+              :disabled="!autoForm.audioMaterialId"
+              @click="toggleAudioPreview(autoForm.audioMaterialId)"
+              :title="playingAudioId === autoForm.audioMaterialId ? '停止' : '试听'"
+            >
+              <svg v-if="playingAudioId !== autoForm.audioMaterialId" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <audio ref="audioPlayer" @ended="onAudioEnded" style="display:none"></audio>
+
+        <div class="toolbar-divider"></div>
+
+        <button class="toolbar-ai-btn" :class="{ active: showChat }" @click="toggleChat" :title="showChat ? '关闭 AI 助手' : 'AI 辅助生成脚本'">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            <circle cx="12" cy="16" r="1"/>
+          </svg>
+          <span>AI 助手</span>
+        </button>
+      </aside>
+
+      <!-- Center: Main Form -->
       <div class="auto-main-panel">
         <p class="auto-desc">输入标题和描述，智能体自动扩写脚本、检索素材、拼接并配音生成混剪视频。</p>
 
@@ -43,53 +129,6 @@
           <div class="auto-card-header">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             <span>描述</span>
-            <div class="card-header-actions">
-                <label class="expand-toggle" :class="{ on: !autoForm.skipExpand }" title="开启后由大模型自动扩写脚本，关闭则直接使用原文检索素材">
-                <span class="expand-toggle-label">扩写</span>
-                <span class="expand-toggle-track">
-                  <span class="expand-toggle-thumb"></span>
-                </span>
-                <input type="checkbox" :checked="!autoForm.skipExpand" @change="autoForm.skipExpand = !$event.target.checked" class="expand-toggle-input" />
-              </label>
-              <span class="batch-label">生成批次</span>
-              <input type="number" v-model.number="autoForm.batchCount" class="batch-input" min="1" @change="autoForm.batchCount = Math.max(1, Math.min(50, autoForm.batchCount || 1))" />
-              <select v-model="autoForm.ratioIdx" class="inline-select">
-                <option value="">画面比率</option>
-                <option value="0">1920×1080 (16:9)</option>
-                <option value="1">1280×720 (16:9)</option>
-                <option value="2">1080×1920 (9:16) 抖音</option>
-                <option value="3">720×1280 (9:16) 竖屏</option>
-                <option value="4">540×960 (9:16) 竖屏标清</option>
-                <option value="5">1080×2340 (19.5:9) 全面屏</option>
-                <option value="6">1080×1350 (4:5) Instagram</option>
-                <option value="7">1080×1440 (3:4) 小红书</option>
-                <option value="8">1080×1080 (1:1) 方屏</option>
-                <option value="9">640×640 (1:1) 方屏标清</option>
-                <option value="10">1920×960 (2:1) 宽屏</option>
-                <option value="11">1440×1080 (4:3)</option>
-              </select>
-              <select v-model="autoForm.voice" class="inline-select">
-                <option value="">默认音色</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:alex">亚力克斯</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:anna">安娜</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:bella">贝拉</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:benjamin">本杰明</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:charles">查尔斯</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:claire">克莱尔</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:david">大卫</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:diana">黛安娜</option>
-                <option value="FunAudioLLM/CosyVoice2-0.5B:longfei">龙飞</option>
-              </select>
-              <button class="agent-toggle-btn" :class="{ active: showChat }" @click="toggleChat" :title="showChat ? '关闭 AI 助手' : 'AI 辅助生成脚本'">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  <circle cx="12" cy="16" r="1"/>
-                </svg>
-                <span>AI 助手</span>
-              </button>
-
-            </div>
           </div>
           <div class="auto-card-body">
             <div class="md-editor">
@@ -150,10 +189,24 @@
           <div class="auto-card-body">
             <div class="progress-header">
               <div class="progress-spinner"></div>
-              <span>LLM 扩写 → 检索素材 → 拼接 → 配音，请稍候...</span>
+              <span v-if="autoProgress.total === 0">LLM 扩写 → 检索素材 → 拼接 → 配音，请稍候...</span>
+              <span v-else>生成中 {{ autoProgress.current }} / {{ autoProgress.total }}</span>
             </div>
             <div class="progress-bar">
-              <div class="progress-fill processing-anim"></div>
+              <div class="progress-fill" :style="{ width: autoProgress.total ? (autoProgress.current / autoProgress.total * 100) + '%' : '30%', animation: autoProgress.total ? 'none' : 'progress-indeterminate 1.5s ease infinite' }"></div>
+            </div>
+            <!-- Generated video list -->
+            <div v-if="autoGeneratedVideos.length > 0" class="auto-gen-list">
+              <div class="auto-gen-list-header">已生成混剪 ({{ autoGeneratedVideos.length }})</div>
+              <div class="auto-gen-list-body">
+                <div v-for="v in autoGeneratedVideos" :key="v.id" class="auto-gen-item">
+                  <img v-if="v.thumbnail" :src="v.thumbnail" class="auto-gen-thumb" />
+                  <div class="auto-gen-info">
+                    <div class="auto-gen-title">{{ v.title || '未命名' }}</div>
+                    <div class="auto-gen-meta">{{ v.duration?.toFixed(1) }}s · {{ v.frame_width }}×{{ v.frame_height }}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

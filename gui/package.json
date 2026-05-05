@@ -35,11 +35,6 @@
         "to": "."
       },
       {
-        "from": "../bin",
-        "to": "bin",
-        "filter": ["**/*", "!upx*"]
-      },
-      {
         "from": "../config.enc.bak",
         "to": "config.enc"
       }

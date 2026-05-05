@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db
@@ -12,9 +12,11 @@ from src.api.schemas import (
 )
 from src.api.services.generated_service import (
     auto_batch_generate,
+    auto_batch_generate_stream,
     auto_generate,
     auto_search,
     batch_generate_groups,
+    batch_generate_groups_stream,
     create_generated,
     delete_generated,
     dub_generated_video,
@@ -55,6 +57,15 @@ def _auto_batch_generate(data: AutoBatchGenerateRequest, db: Session = Depends(g
     return auto_batch_generate(data, db)
 
 
+@router.post("/auto-batch-generate-stream")
+def _auto_batch_generate_stream(data: AutoBatchGenerateRequest, db: Session = Depends(get_db)):
+    return StreamingResponse(
+        auto_batch_generate_stream(data, db),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/{gen_id}")
 def _get_generated(gen_id: int, db: Session = Depends(get_db)):
     return get_generated(db, gen_id)
@@ -83,6 +94,15 @@ def _generate_video(gen_id: int, voice: str | None = None, db: Session = Depends
 @router.post("/{gen_id}/batch-generate-groups")
 def _batch_generate_groups(gen_id: int, db: Session = Depends(get_db)):
     return batch_generate_groups(db, gen_id)
+
+
+@router.post("/{gen_id}/batch-generate-groups-stream")
+def _batch_generate_groups_stream(gen_id: int, db: Session = Depends(get_db)):
+    return StreamingResponse(
+        batch_generate_groups_stream(db, gen_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/{gen_id}/dub")
