@@ -2,7 +2,6 @@
 
 import logging
 import sys
-from pathlib import Path
 
 from src.config import get_config
 
@@ -18,7 +17,7 @@ def _init_file_handlers():
     if _file_handlers_initialized:
         return
 
-    log_dir = Path(get_config("log_dir"))
+    log_dir = get_config("log_dir")
     log_dir.mkdir(parents=True, exist_ok=True)
 
     formatter = logging.Formatter(_LOG_FORMAT, _DATE_FORMAT)

@@ -66,6 +66,8 @@ COLLECT_PACKAGES = [
     "faster_whisper",
     "huggingface_hub",
     "chromadb",
+    "imageio",
+    "imageio_ffmpeg",
     "onnxruntime",
     "opentelemetry",
     "opentelemetry.sdk",
@@ -102,6 +104,14 @@ EXCLUDE_PACKAGES = [
     "jupyter",
     "IPython",
     "notebook",
+]
+
+# 需要复制包元数据的模块（importlib.metadata.version 用）
+COPY_METADATA = [
+    "imageio",
+    "moviepy",
+    "numpy",
+    "pillow",
 ]
 
 # 移除 ADD_DATA（不再需要 certifi）
@@ -179,6 +189,11 @@ def build(compress: bool = True):
     for pkg in EXCLUDE_PACKAGES:
         pyi_args += ["--exclude-module", pkg]
     print(f"  排除包: {len(EXCLUDE_PACKAGES)} 个包")
+
+    # 复制包元数据（importlib.metadata.version 需要）
+    for pkg in COPY_METADATA:
+        pyi_args += ["--copy-metadata", pkg]
+    print(f"  复制元数据: {len(COPY_METADATA)} 个包")
 
     # 移除 ADD_DATA 部分（注释掉）
     # for src_path, dst_name in ADD_DATA:

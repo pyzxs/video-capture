@@ -1,24 +1,39 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, Tray, nativeImage } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, Tray, nativeImage, shell } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
+const http = require('http')
+
+// ── 单实例锁 ──
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
 
 let mainWindow
 let tray
 let isQuitting = false
 let backendProcess = null
+let backendReady = false
 
 // ── 后端 exe 路径 ──
 
 function getBackendExePath() {
   const isDev = process.env.NODE_ENV !== 'production'
   if (isDev) {
-    // 开发模式：假设后端已通过 python main.py 单独启动
     return null
   }
   const exeName = process.platform === 'win32' ? 'video-capture-server.exe' : 'video-capture-server'
   const appRoot = path.dirname(process.resourcesPath)
 
-  // NSIS 安装后 exe 被展平到根目录；zip 分发包中 exe 在 video-capture-server/ 下
+  // NSIS 安装后 exe 与前端同级；zip 分发包中 exe 在 video-capture-server/ 子目录
   const flatPath = path.join(appRoot, exeName)
   const nestedPath = path.join(appRoot, 'video-capture-server', exeName)
 
@@ -26,7 +41,6 @@ function getBackendExePath() {
   if (fs.existsSync(flatPath)) return flatPath
   if (fs.existsSync(nestedPath)) return nestedPath
 
-  // 默认返回展平路径（安装版）
   return flatPath
 }
 
@@ -36,6 +50,7 @@ function startBackend() {
   const exePath = getBackendExePath()
   if (!exePath) {
     console.log('[backend] 开发模式，请手动启动后端: python main.py')
+    backendReady = true  // 开发模式假设后端已启动
     return
   }
 
@@ -59,15 +74,45 @@ function startBackend() {
     backendProcess.on('close', (code) => {
       console.log(`[backend] 进程退出, code=${code}`)
       backendProcess = null
-      // 非主动退出时自动重启
+      backendReady = false
       if (!isQuitting && code !== 0) {
         console.log('[backend] 3 秒后重试...')
-        setTimeout(startBackend, 3000)
+        setTimeout(() => { startBackend(); waitForBackend() }, 3000)
       }
     })
   } catch (e) {
     console.error('[backend] 启动异常:', e.message)
   }
+}
+
+function waitForBackend(retries = 30) {
+  return new Promise((resolve) => {
+    let attempt = 0
+    function check() {
+      attempt++
+      const req = http.get('http://127.0.0.1:8090/api/health', (res) => {
+        if (res.statusCode === 200) {
+          backendReady = true
+          console.log('[backend] 服务就绪 (尝试 %d 次)', attempt)
+          resolve(true)
+        } else {
+          retry()
+        }
+      })
+      req.on('error', () => retry())
+      req.setTimeout(2000, () => { req.destroy(); retry() })
+    }
+    function retry() {
+      if (attempt >= retries) {
+        console.error('[backend] 等待超时 (%d 次尝试)', retries)
+        backendReady = true  // 不再阻塞，让前端显示连接错误
+        resolve(false)
+        return
+      }
+      setTimeout(check, 1000)
+    }
+    check()
+  })
 }
 
 function stopBackend() {
@@ -183,16 +228,22 @@ ipcMain.handle('select-files', async () => {
   return result.filePaths
 })
 
-// 前端可查询后端是否在线
+// 打开系统默认浏览器
+ipcMain.handle('open-external', (_, url) => {
+  return shell.openExternal(url)
+})
+
+// 前端可查询后端状态
 ipcMain.handle('backend-status', () => {
-  return { running: backendProcess !== null }
+  return { running: backendProcess !== null, ready: backendReady }
 })
 
 // ── 应用生命周期 ──
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   startBackend()
+  await waitForBackend()
   createWindow()
   createTray()
 })
@@ -205,3 +256,5 @@ app.on('before-quit', () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+} // else 块结束（单实例锁）

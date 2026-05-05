@@ -189,6 +189,15 @@
             </button>
           </template>
         </div>
+
+        <!-- 手动安装 -->
+        <div class="resource-manual" v-if="!resourceReady">
+          <span>自动下载失败？</span>
+          <a href="#" @click.prevent="openManualInstall">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            手动安装
+          </a>
+        </div>
       </div>
     </div>
   </div>
@@ -367,6 +376,16 @@ export default {
       }
     }
 
+    const MANUAL_URL = 'https://github.com/pyzxs/video-capture-install/releases/tag/model'
+
+    function openManualInstall() {
+      if (window.electronAPI?.openExternal) {
+        window.electronAPI.openExternal(MANUAL_URL)
+      } else {
+        window.open(MANUAL_URL, '_blank')
+      }
+    }
+
     onMounted(() => {
       checkAndDownload()
     })
@@ -398,6 +417,7 @@ export default {
       resourcePercent,
       downloadElapsed,
       retryDownload,
+      openManualInstall,
     }
   },
 }
@@ -1060,6 +1080,31 @@ nav { flex: 1; padding: 12px 0; display: flex; flex-direction: column; align-ite
   color: var(--text);
   border-color: #d1d5db;
 }
+
+/* 手动安装入口 */
+.resource-manual {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.resource-manual a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+
+.resource-manual a:hover { color: #5a4bd1; text-decoration: underline; }
 .progress-bar { flex: 1; height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
 .progress-fill {
   height: 100%;

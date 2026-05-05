@@ -281,23 +281,23 @@ Function _EnvVarUpdate_IsPathInList
     StrLen $R3 $R0
     StrLen $R4 $R1
     StrCpy $R5 0
+    StrCpy $R6 0
 
-    ${Do}
-        ; Extract substring
+    IntOp $R6 $R4 - $R3
+    _EnvVarUpdate_IsPathInList_loop:
+        IntCmp $R5 $R6 _EnvVarUpdate_IsPathInList_cmp _EnvVarUpdate_IsPathInList_cmp _EnvVarUpdate_IsPathInList_notfound
+
+    _EnvVarUpdate_IsPathInList_cmp:
         StrCpy $R2 $R1 $R3 $R5
-
-        ; Compare case-insensitively
-        ${If} $R2 == $R0
-            StrCpy $R0 $R2
-            ${ExitDo}
-        ${EndIf}
-
+        StrCmp $R2 $R0 0 +3
+        StrCpy $R0 $R2
+        Goto _EnvVarUpdate_IsPathInList_done
         IntOp $R5 $R5 + 1
-    ${LoopWhile} $R5 <= $R4 - $R3
+        Goto _EnvVarUpdate_IsPathInList_loop
 
-    ${If} $R5 > $R4 - $R3
+    _EnvVarUpdate_IsPathInList_notfound:
         StrCpy $R0 ""
-    ${EndIf}
+    _EnvVarUpdate_IsPathInList_done:
 
     Pop $R5
     Pop $R4
@@ -358,19 +358,20 @@ Function _EnvVarUpdate_Replace
     StrLen $R5 $R1
     StrLen $R6 $R2
 
-    ${Do}
+    _EVR_Replace_loop:
         StrCpy $R3 $R2 $R5
-        ${If} $R3 == $R1
-            StrCpy $R4 "$R4$R0"
-            StrCpy $R2 $R2 "" $R5
-            StrLen $R6 $R2
-        ${Else}
-            StrCpy $R3 $R2 1
-            StrCpy $R4 "$R4$R3"
-            StrCpy $R2 $R2 "" 1
-            StrLen $R6 $R2
-        ${EndIf}
-    ${LoopWhile} $R6 > 0
+        StrCmp $R3 $R1 0 +5
+        StrCpy $R4 "$R4$R0"
+        StrCpy $R2 $R2 "" $R5
+        StrLen $R6 $R2
+        Goto _EVR_Replace_chk
+        StrCpy $R3 $R2 1
+        StrCpy $R4 "$R4$R3"
+        StrCpy $R2 $R2 "" 1
+        StrLen $R6 $R2
+    _EVR_Replace_chk:
+        IntCmp $R6 0 _EVR_Replace_done _EVR_Replace_done _EVR_Replace_loop
+    _EVR_Replace_done:
 
     StrCpy $R0 $R4
 
@@ -644,18 +645,22 @@ Function un._EnvVarUpdate_IsPathInList
     StrLen $R4 $R1
     StrCpy $R5 0
 
-    ${Do}
-        StrCpy $R2 $R1 $R3 $R5
-        ${If} $R2 == $R0
-            StrCpy $R0 $R2
-            ${ExitDo}
-        ${EndIf}
-        IntOp $R5 $R5 + 1
-    ${LoopWhile} $R5 <= $R4 - $R3
+    StrCpy $R6 0
+    IntOp $R6 $R4 - $R3
+    _unEVR_IsPathInList_loop:
+        IntCmp $R5 $R6 _unEVR_IsPathInList_cmp _unEVR_IsPathInList_cmp _unEVR_IsPathInList_notfound
 
-    ${If} $R5 > $R4 - $R3
+    _unEVR_IsPathInList_cmp:
+        StrCpy $R2 $R1 $R3 $R5
+        StrCmp $R2 $R0 0 +3
+        StrCpy $R0 $R2
+        Goto _unEVR_IsPathInList_done
+        IntOp $R5 $R5 + 1
+        Goto _unEVR_IsPathInList_loop
+
+    _unEVR_IsPathInList_notfound:
         StrCpy $R0 ""
-    ${EndIf}
+    _unEVR_IsPathInList_done:
 
     Pop $R5
     Pop $R4
@@ -711,19 +716,20 @@ Function un._EnvVarUpdate_Replace
     StrLen $R5 $R1
     StrLen $R6 $R2
 
-    ${Do}
+    _unEVR_Replace_loop:
         StrCpy $R3 $R2 $R5
-        ${If} $R3 == $R1
-            StrCpy $R4 "$R4$R0"
-            StrCpy $R2 $R2 "" $R5
-            StrLen $R6 $R2
-        ${Else}
-            StrCpy $R3 $R2 1
-            StrCpy $R4 "$R4$R3"
-            StrCpy $R2 $R2 "" 1
-            StrLen $R6 $R2
-        ${EndIf}
-    ${LoopWhile} $R6 > 0
+        StrCmp $R3 $R1 0 +5
+        StrCpy $R4 "$R4$R0"
+        StrCpy $R2 $R2 "" $R5
+        StrLen $R6 $R2
+        Goto _unEVR_Replace_chk
+        StrCpy $R3 $R2 1
+        StrCpy $R4 "$R4$R3"
+        StrCpy $R2 $R2 "" 1
+        StrLen $R6 $R2
+    _unEVR_Replace_chk:
+        IntCmp $R6 0 _unEVR_Replace_done _unEVR_Replace_done _unEVR_Replace_loop
+    _unEVR_Replace_done:
 
     StrCpy $R0 $R4
 

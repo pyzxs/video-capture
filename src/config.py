@@ -4,14 +4,29 @@ import base64
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-_CONFIG_PATH = Path("config.enc")
-_LEGACY_PATH = Path("config.json")
+
+def _get_data_root() -> str:
+    """数据目录：开发时用项目根，打包后用 %APPDATA%/Video Capture。"""
+    if getattr(sys, 'frozen', False):
+        appdata = os.environ.get('APPDATA', os.path.expanduser('~'))
+        root = os.path.join(appdata, 'Video Capture')
+        os.makedirs(root, exist_ok=True)
+        return root
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+BASE_DIR = _get_data_root()
+_DATA_ROOT = Path(BASE_DIR)
+
+_CONFIG_PATH = _DATA_ROOT / "config.enc"
+_LEGACY_PATH = _DATA_ROOT / "config.json"
 
 # ── 密钥派生 ──
 _SALT = b"video-capture\x00salt\x00v1"
@@ -63,20 +78,19 @@ _TYPE_MAP = {
     "material_dir": Path,
     "mixed_dir": Path,
     "whisper_model_dir": Path,
+    "vector_db_path": Path,
     "paragraph_gap_threshold": float,
     "thumbnail_dir": Path,
     "subtitle_crop_bottom": int,
-    "log_dir": str,
+    "log_dir": Path,
 }
 
 # 数据库连接（硬编码，需要在 DB 初始化前使用）
-DATABASE_URL = "sqlite:///storage/database/material.db"
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATABASE_URL = f"sqlite:///{BASE_DIR}/storage/database/material.db"
 
 print(f"基础路径地址: {BASE_DIR}")
 
-OUTPUT_DIR = Path(BASE_DIR + "/storage/output")
+OUTPUT_DIR = Path(BASE_DIR) / "storage" / "output"
 
 _fernet: Fernet | None = None
 _fernet_error: bool = False
@@ -129,7 +143,10 @@ def get_config(key: str):
     val = _load().get(key, _DEFAULTS.get(key))
     typ = _TYPE_MAP.get(key)
     if typ is Path:
-        return Path(str(val)).resolve()
+        p = Path(str(val))
+        if not p.is_absolute():
+            p = Path(BASE_DIR) / p
+        return p.resolve()
     if typ is float:
         return float(val)
     if typ is int:
