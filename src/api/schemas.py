@@ -108,6 +108,7 @@ class MaterialBase(BaseModel):
     frame_rate: float = 0.0
     filename: str | None = ""
     filepath: str | None = ""
+    file_url: str = ""
     thumbnail: str = ""
     status: int = 1
     folder_id: int | None = None

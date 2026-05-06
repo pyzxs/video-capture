@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from src.api.response import fail_response
 from src.api.schemas import NoteCreate, NoteOut, NoteTreeOut, NoteUpdate
-from src.config import get_config
+from src.config import API_BASE_URL, get_config
 from src.db.models import Note
 
 
@@ -56,7 +56,7 @@ def upload_note_image(file) -> dict:
     dest = note_dir / filename
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    return {"url": f"http://127.0.0.1:8090/api/notes/files/{filename}"}
+    return {"url": f"{API_BASE_URL}/api/notes/files/{filename}"}
 
 
 def get_note_image_path(filename: str) -> str:

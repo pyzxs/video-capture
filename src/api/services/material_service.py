@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.api.response import fail_response
 from src.api.schemas import MaterialCreate, MaterialOut, MaterialTtsRequest
-from src.config import get_config
+from src.config import API_BASE_URL, get_config
 from src.db.models import Material
 from src.processing.ffmpeg import get_video_duration, get_video_metadata
 from src.services.tts import synthesize
@@ -81,7 +81,7 @@ def list_materials(
     items = query.offset(skip).limit(limit).all()
     for m in items:
         if m.id:
-            m.file_url = f"http://127.0.0.1:8090/api/materials/{m.id}/file"
+            m.file_url = f"{API_BASE_URL}/api/materials/{m.id}/file"
         if m.type == "image" and m.id:
             m.thumbnail = m.file_url  # 图片素材：缩略图即原文件
         else:
@@ -93,6 +93,11 @@ def get_material(db: Session, material_id: int) -> Material:
     m = db.query(Material).get(material_id)
     if not m:
         raise fail_response(status_code=404, message="素材不存在")
+    m.file_url = f"{API_BASE_URL}/api/materials/{m.id}/file"
+    if m.type == "image":
+        m.thumbnail = m.file_url
+    else:
+        m.thumbnail = thumb_url(m.thumbnail)
     return m
 
 
@@ -169,6 +174,11 @@ def create_material_with_file(
     if content:
         _index_material_content(material.id, content, material)
 
+    material.file_url = f"{API_BASE_URL}/api/materials/{material.id}/file"
+    if material.type == "image":
+        material.thumbnail = material.file_url
+    else:
+        material.thumbnail = thumb_url(material.thumbnail)
     return material
 
 
@@ -196,6 +206,11 @@ def create_material_json(db: Session, data: MaterialCreate) -> Material:
     if material.content:
         _index_material_content(material.id, material.content, material)
 
+    material.file_url = f"{API_BASE_URL}/api/materials/{material.id}/file"
+    if material.type == "image":
+        material.thumbnail = material.file_url
+    else:
+        material.thumbnail = thumb_url(material.thumbnail)
     return material
 
 
@@ -211,6 +226,11 @@ def update_material(db: Session, material_id: int, data: dict) -> Material:
     if m.content:
         _index_material_content(material_id, m.content, m)
 
+    m.file_url = f"{API_BASE_URL}/api/materials/{m.id}/file"
+    if m.type == "image":
+        m.thumbnail = m.file_url
+    else:
+        m.thumbnail = thumb_url(m.thumbnail)
     return m
 
 
@@ -254,6 +274,8 @@ def create_material_by_tts(db: Session, data: MaterialTtsRequest) -> Material:
     if data.text:
         _index_material_content(material.id, data.text, material)
 
+    material.file_url = f"{API_BASE_URL}/api/materials/{material.id}/file"
+    material.thumbnail = thumb_url(material.thumbnail)
     return material
 
 
@@ -335,7 +357,7 @@ def create_material_from_segment(
         "content": seg.content,
         "filename": seg.filename,
         "filepath": seg.filepath,
-        "file_url": f"http://127.0.0.1:8090/api/materials/{seg.id}/file",
+        "file_url": f"{API_BASE_URL}/api/materials/{seg.id}/file",
         "frame_width": seg.frame_width,
         "frame_height": seg.frame_height,
         "duration": dur_sec,

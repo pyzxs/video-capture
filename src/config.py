@@ -95,6 +95,9 @@ print(f"基础路径地址: {BASE_DIR}")
 
 OUTPUT_DIR = Path(BASE_DIR) / "storage" / "output"
 
+# 后端 API 地址（前端 file:// 协议下需用绝对 URL）
+API_BASE_URL = "http://127.0.0.1:8090"
+
 _fernet: Fernet | None = None
 _fernet_error: bool = False
 

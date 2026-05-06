@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 import imageio.v3 as iio
+from src.config import API_BASE_URL
 
 _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -82,7 +83,7 @@ def get_image_size(image_path):
 def generate_thumbnail(video_path: str) -> str:
     """从视频第1秒提取一帧作为缩略图，返回缩略图文件路径。失败返回空字符串。"""
     import hashlib
-    from src.config import BASE_DIR, get_config
+    from src.config import API_BASE_URL, BASE_DIR, get_config
 
     thumb_dir = get_config("thumbnail_dir")
     thumb_dir.mkdir(parents=True, exist_ok=True)
@@ -109,4 +110,4 @@ def thumb_url(filepath: str) -> str:
     """
     if not filepath:
         return ""
-    return f"http://127.0.0.1:8090/api/thumbnails/{Path(filepath).name}"
+    return f"{API_BASE_URL}/api/thumbnails/{Path(filepath).name}"
