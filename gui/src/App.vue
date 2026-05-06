@@ -4,6 +4,13 @@
       <img src="/video-capture.ico" width="22" height="22" class="logo-icon" alt="" />
       <span class="header-title">Video Capture</span>
     </div>
+    <div class="header-health" :class="{ online: backendOnline, offline: !backendOnline }">
+      <span class="health-dot"></span>
+      <span class="health-text">{{ backendOnline ? '后端正常' : '后端未启动' }}</span>
+      <button v-if="!backendOnline && !isDevMode" class="health-start-btn" @click="handleStartBackend" :disabled="startingBackend">
+        {{ startingBackend ? '启动中...' : '启动' }}
+      </button>
+    </div>
     <div class="header-controls">
       <button class="header-btn" @click="minimizeWindow" title="最小化">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -136,7 +143,7 @@
 
         <!-- 描述 -->
         <p class="resource-desc" v-if="!resourceReady && !resourceError">
-          首次启动需下载运行环境，包含视频处理工具和语音识别模型，仅需一次。
+          首次启动需下载语音识别模型，仅需一次。
         </p>
         <p class="resource-desc" v-if="resourceReady">
           所有资源已就绪，可以开始使用了。
@@ -147,11 +154,6 @@
 
         <!-- 下载清单 -->
         <div class="resource-list" v-if="!resourceReady && !resourceError">
-          <div class="resource-item">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
-            <span>ffmpeg / ffplay / ffprobe 视频处理工具</span>
-            <span class="resource-item-size">~560 MB</span>
-          </div>
           <div class="resource-item">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z"/></svg>
             <span>Whisper 语音识别模型 (base)</span>
@@ -386,14 +388,63 @@ export default {
       }
     }
 
+    // ── 后端健康检查 ──
+    const backendOnline = ref(false)
+    const startingBackend = ref(false)
+    const isDevMode = ref(!window.electronAPI?.startBackend)
+    let _healthTimer = null
+
+    async function checkHealth() {
+      try {
+        const resp = await fetch('http://127.0.0.1:8090/api/health', { signal: AbortSignal.timeout(2000) })
+        if (resp.ok) {
+          const data = await resp.json()
+          backendOnline.value = data.status === 'ok'
+        } else {
+          backendOnline.value = false
+        }
+      } catch {
+        backendOnline.value = false
+      }
+    }
+
+    async function handleStartBackend() {
+      if (startingBackend.value || !window.electronAPI?.startBackend) return
+      startingBackend.value = true
+      try {
+        const result = await window.electronAPI.startBackend()
+        if (result.success) {
+          backendOnline.value = true
+          toast.success(result.message)
+        } else {
+          toast.error(result.message)
+        }
+      } catch (e) {
+        toast.error('启动失败: ' + (e.message || e))
+      } finally {
+        startingBackend.value = false
+      }
+    }
+
+    function _startHealthPolling() {
+      if (_healthTimer) return
+      checkHealth()
+      _healthTimer = setInterval(checkHealth, 5000)
+    }
+
     onMounted(() => {
       checkAndDownload()
+      _startHealthPolling()
     })
 
     onBeforeUnmount(() => {
       if (_pollTimer) {
         clearInterval(_pollTimer)
         _pollTimer = null
+      }
+      if (_healthTimer) {
+        clearInterval(_healthTimer)
+        _healthTimer = null
       }
       _stopElapsed()
     })
@@ -409,6 +460,10 @@ export default {
       minimizeWindow: () => window.electronAPI?.minimize(),
       maximizeWindow: () => window.electronAPI?.maximize(),
       closeWindow: () => window.electronAPI?.close(),
+      backendOnline,
+      startingBackend,
+      isDevMode,
+      handleStartBackend,
       showResourceDialog,
       resourceReady,
       resourceProgress,
@@ -497,6 +552,37 @@ body {
 }
 .header-btn:hover { background: #f3f4f6; color: var(--text); }
 .header-btn-close:hover { background: #ef4444; color: #fff; }
+
+.header-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 24px;
+  -webkit-app-region: no-drag;
+}
+.health-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.header-health.online .health-dot { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5); }
+.header-health.offline .health-dot { background: #f87171; box-shadow: 0 0 6px rgba(248,113,113,0.5); }
+.health-text { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.header-health.online .health-text { color: #16a34a; }
+.header-health.offline .health-text { color: #dc2626; }
+.health-start-btn {
+  padding: 2px 10px;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.health-start-btn:hover:not(:disabled) { background: #fee2e2; border-color: #f87171; }
+.health-start-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .app-container { display: flex; height: calc(100vh - 40px); }
 

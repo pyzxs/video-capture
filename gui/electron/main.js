@@ -35,17 +35,23 @@ function getBackendExePath() {
     return null
   }
   const exeName = process.platform === 'win32' ? 'video-capture-server.exe' : 'video-capture-server'
-  const appRoot = path.dirname(process.resourcesPath)
-
+  const resourcesPath = process.resourcesPath
+  const appRoot = path.dirname(resourcesPath)
   const fs = require('fs')
+
+  // electron-builder extraFiles 默认路径: resources/backend/video-capture-server.exe
+  const backendDir = path.join(resourcesPath, 'backend', exeName)
+  if (fs.existsSync(backendDir)) return backendDir
+
+  // 兼容: 平铺在 appRoot
   const candidate = path.join(appRoot, exeName)
   if (fs.existsSync(candidate)) return candidate
 
-  // 兼容旧版（video-capture-server/ 子目录）
+  // 兼容旧版: video-capture-server/ 子目录
   const nested = path.join(appRoot, 'video-capture-server', exeName)
   if (fs.existsSync(nested)) return nested
 
-  return candidate
+  return backendDir
 }
 
 // ── 后端进程管理 ──
@@ -255,8 +261,21 @@ ipcMain.handle('open-external', (_, url) => {
 })
 
 // 前端可查询后端状态
-ipcMain.handle('backend-status', () => {
-  return { running: backendProcess !== null, ready: backendReady }
+ipcMain.handle('backend-status', async () => {
+  const running = await checkBackendRunning()
+  return { running, ready: backendReady }
+})
+
+// 前端手动启动后端
+ipcMain.handle('start-backend', async () => {
+  if (backendReady) {
+    const running = await checkBackendRunning()
+    if (running) return { success: true, message: '已就绪' }
+    backendReady = false
+  }
+  await startBackend()
+  const ready = await waitForBackend()
+  return { success: ready, message: ready ? '启动成功' : '启动超时' }
 })
 
 // ── 应用生命周期 ──

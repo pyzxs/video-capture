@@ -33,6 +33,10 @@
       {
         "from": "../dist/video-capture-server",
         "to": "backend"
+      },
+      {
+        "from": "../bin",
+        "to": "backend/bin"
       }
     ],
     "afterPack": "scripts/after-pack.js",
