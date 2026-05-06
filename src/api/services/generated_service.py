@@ -1,6 +1,8 @@
 """Generated video business logic: CRUD, auto-generate, batch, groups, ASS helpers."""
 import hashlib
 import json
+import subprocess
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +20,8 @@ from src.api.schemas import (
 from src.config import get_config
 from src.db.models import GeneratedVideo, Material
 from src.logger import default_logger as logger
+
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
 
 
@@ -260,10 +264,10 @@ def _make_segment(clip: dict, fp: str, fps: int, gen_id: int, temp_dir: str) -> 
         str(seg_path),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
         valid = False
         try:
-            probe = subprocess.run(
+            probe = subprocess.run(creationflags=_CREATIONFLAGS,
                 [f"{ff}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
                  "-of", "csv=p=0", str(seg_path)],
                 capture_output=True, text=True, timeout=10,
@@ -298,7 +302,7 @@ def _extract_audio_segment(fp: str, duration_sec: float, gen_id: int, temp_dir: 
         str(seg_path),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
         if Path(seg_path).exists() and Path(seg_path).stat().st_size > 0:
             return seg_path
         else:
@@ -720,10 +724,10 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
                 str(seg_path),
             ]
             try:
-                subprocess.run(cmd, check=True, capture_output=True)
+                subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
                 valid = False
                 try:
-                    probe = subprocess.run(
+                    probe = subprocess.run(creationflags=_CREATIONFLAGS,
                         [f"{ff}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
                          "-of", "csv=p=0", str(seg_path)],
                         capture_output=True, text=True, timeout=10,

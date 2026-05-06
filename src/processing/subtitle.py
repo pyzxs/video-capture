@@ -3,6 +3,7 @@
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from src.config import get_config, BASE_DIR
@@ -10,6 +11,8 @@ from src.logger import default_logger as logger
 from src.processing.asr import transcribe
 from src.processing.ffmpeg import extract_audio
 from src.utils import ensure_date_dir, ts_to_seconds
+
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 _ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
 _ffprobe_bin = str(Path(BASE_DIR) / "bin" / "ffprobe")
@@ -99,7 +102,7 @@ def _ffmpeg_stream_info(video_path: str) -> list[dict]:
         "-show_streams", "-select_streams", "s",
         str(video_path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(creationflags=_CREATIONFLAGS,cmd, capture_output=True, text=True)
     data = json.loads(result.stdout)
     return data.get("streams", [])
 
@@ -143,7 +146,7 @@ def extract_soft_subtitles(video_path: str) -> list[dict] | None:
         "-map", f"0:{idx}",
         "-y", sub_path,
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
 
     segments = parse_subtitles(sub_path, ext)
     return segments if segments else None

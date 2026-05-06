@@ -1,13 +1,14 @@
 """TTS 语音合成与视频配音。"""
 import hashlib
 import subprocess
+import sys
 from pathlib import Path
-
-import requests
 
 from src.config import get_config, BASE_DIR
 from src.utils import ensure_date_dir
 from src.logger import default_logger as logger
+
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
 
@@ -24,6 +25,7 @@ def synthesize(text: str, output_path: str | None = None,
     返回输出音频文件路径。
     """
     from src.auth import get_auth_headers, update_local_quota
+    from src.http_client import sync_post
 
     if not get_config("api_key"):
         raise RuntimeError("未注册 CMS 用户，无法使用 TTS")
@@ -43,7 +45,7 @@ def synthesize(text: str, output_path: str | None = None,
         "response_format": "mp3",
     }
 
-    resp = requests.post(
+    resp = sync_post(
         f"{cms_url}/api/proxy/tts",
         json=payload, headers=headers, timeout=60,
     )
@@ -91,7 +93,7 @@ def dub_video(video_path: str, audio_path: str, output_path: str | None = None) 
         "-shortest",
         "-y", str(tmp),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
     if output_path.exists():
         output_path.unlink()
     tmp.rename(output_path)

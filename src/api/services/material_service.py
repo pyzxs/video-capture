@@ -1,5 +1,7 @@
 """Material business logic: CRUD, upload, TTS creation, segment creation, vector indexing."""
 import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -12,6 +14,8 @@ from src.db.models import Material
 from src.processing.ffmpeg import get_video_duration, get_video_metadata
 from src.services.tts import synthesize
 from src.utils import ensure_date_dir, get_image_size, generate_thumbnail, thumb_url
+
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 _vector_store: "VectorStore | None" = None
 
@@ -76,8 +80,10 @@ def list_materials(
     total = query.count()
     items = query.offset(skip).limit(limit).all()
     for m in items:
+        if m.id:
+            m.file_url = f"http://127.0.0.1:8090/api/materials/{m.id}/file"
         if m.type == "image" and m.id:
-            m.thumbnail = f"/api/materials/{m.id}/file"
+            m.thumbnail = m.file_url  # 图片素材：缩略图即原文件
         else:
             m.thumbnail = thumb_url(m.thumbnail)
     return {"items": items, "total": total}
@@ -296,7 +302,7 @@ def create_material_from_segment(
         out_path,
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         raise fail_response(status_code=500, message=f"裁剪失败: {e.stderr[-200:] if e.stderr else ''}")
 
@@ -329,6 +335,7 @@ def create_material_from_segment(
         "content": seg.content,
         "filename": seg.filename,
         "filepath": seg.filepath,
+        "file_url": f"http://127.0.0.1:8090/api/materials/{seg.id}/file",
         "frame_width": seg.frame_width,
         "frame_height": seg.frame_height,
         "duration": dur_sec,

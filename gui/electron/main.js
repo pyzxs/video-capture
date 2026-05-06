@@ -9,11 +9,16 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', async () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
+    }
+    // 确保后端仍在运行（窗口隐藏期间可能被意外关闭）
+    if (!backendReady) {
+      await startBackend()
+      await waitForBackend()
     }
   })
 
@@ -32,24 +37,42 @@ function getBackendExePath() {
   const exeName = process.platform === 'win32' ? 'video-capture-server.exe' : 'video-capture-server'
   const appRoot = path.dirname(process.resourcesPath)
 
-  // NSIS 安装后 exe 与前端同级；zip 分发包中 exe 在 video-capture-server/ 子目录
-  const flatPath = path.join(appRoot, exeName)
-  const nestedPath = path.join(appRoot, 'video-capture-server', exeName)
-
   const fs = require('fs')
-  if (fs.existsSync(flatPath)) return flatPath
-  if (fs.existsSync(nestedPath)) return nestedPath
+  const candidate = path.join(appRoot, exeName)
+  if (fs.existsSync(candidate)) return candidate
 
-  return flatPath
+  // 兼容旧版（video-capture-server/ 子目录）
+  const nested = path.join(appRoot, 'video-capture-server', exeName)
+  if (fs.existsSync(nested)) return nested
+
+  return candidate
 }
 
 // ── 后端进程管理 ──
 
-function startBackend() {
+function checkBackendRunning() {
+  return new Promise((resolve) => {
+    const req = http.get('http://127.0.0.1:8090/api/health', { timeout: 1500 }, (res) => {
+      resolve(res.statusCode === 200)
+    })
+    req.on('error', () => resolve(false))
+    req.setTimeout(1500, () => { req.destroy(); resolve(false) })
+  })
+}
+
+async function startBackend() {
   const exePath = getBackendExePath()
   if (!exePath) {
     console.log('[backend] 开发模式，请手动启动后端: python main.py')
-    backendReady = true  // 开发模式假设后端已启动
+    backendReady = true
+    return
+  }
+
+  // 检查后端是否已在运行（上次关闭窗口后守护进程仍存活）
+  const alreadyRunning = await checkBackendRunning()
+  if (alreadyRunning) {
+    console.log('[backend] 检测到已有后端进程，复用')
+    backendReady = true
     return
   }
 

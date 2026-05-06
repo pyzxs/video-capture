@@ -56,7 +56,7 @@ def upload_note_image(file) -> dict:
     dest = note_dir / filename
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    return {"url": f"/api/notes/files/{filename}"}
+    return {"url": f"http://127.0.0.1:8090/api/notes/files/{filename}"}
 
 
 def get_note_image_path(filename: str) -> str:

@@ -57,15 +57,23 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def startup():
+        import threading
+
         init_db()
         from src.db.models import Setting
         from src.db.engine import SessionLocal
         db = SessionLocal()
         default_logger.info("启动startup")
         try:
-            # 自动注册 CMS 用户（首次启动时）
-            from src.auth import get_or_register
-            get_or_register()
+            # CMS 注册放到后台线程，不阻塞服务启动
+            def _cms_register_task():
+                try:
+                    from src.auth import get_or_register
+                    get_or_register()
+                except Exception:
+                    default_logger.warning("CMS 后台注册失败", exc_info=True)
+
+            threading.Thread(target=_cms_register_task, daemon=True).start()
 
             # 如果 settings 表为空，从 config.enc 导入初始配置
             if db.query(Setting).count() == 0:
@@ -94,9 +102,9 @@ def create_app() -> FastAPI:
 
     def _import_config_to_db(db):
         """将 config.enc 中的配置导入到 settings 表（仅在首次启动时调用）。"""
-        from src.config import _load, _CONFIG_PATH, _LEGACY_PATH
+        from src.config import _load, _CONFIG_PATH
 
-        if not _CONFIG_PATH.exists() and not _LEGACY_PATH.exists():
+        if not _CONFIG_PATH.exists():
             default_logger.warning("配置文件不存在，跳过导入")
             return
 

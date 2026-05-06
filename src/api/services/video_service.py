@@ -1,6 +1,8 @@
 """Video business logic: CRUD, upload, download, split, dub, ASR handling."""
 import re
 import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -27,6 +29,8 @@ from src.processing.ffmpeg import get_video_duration, get_video_metadata, extrac
 from src.processing.paragraph import merge_into_paragraphs
 from src.processing.subtitle import get_timestamps
 from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
+
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 def _video_to_dict(v: Video) -> dict:
@@ -389,7 +393,7 @@ def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, 
                     "-i", str(v.filepath),
                     "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                     "-y", seg_audio,
-                ], check=True, capture_output=True)
+                ], check=True, capture_output=True, creationflags=_CREATIONFLAGS)
                 text = transcribe_return_text(seg_audio)
             except Exception:
                 text = ""

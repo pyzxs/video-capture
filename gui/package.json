@@ -32,9 +32,10 @@
     "extraFiles": [
       {
         "from": "../dist/video-capture-server",
-        "to": "."
+        "to": "backend"
       }
     ],
+    "afterPack": "scripts/after-pack.js",
     "win": {
       "target": [
         {

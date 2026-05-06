@@ -12,6 +12,16 @@ from src.config import get_config, BASE_DIR
 from src.logger import default_logger as logger
 from src.utils import ensure_date_dir
 
+# Windows 下隐藏 ffmpeg/ffprobe 子进程的控制台窗口
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+
+def _run(cmd, **kwargs):
+    """subprocess.run 包装，Windows 下自动隐藏控制台窗口。"""
+    kwargs.setdefault("creationflags", _CREATIONFLAGS)
+    return _run(cmd, **kwargs)
+
+
 # ── 音频相关 ──
 ffmpeg_prefix = rf"{BASE_DIR}/bin/"
 
@@ -32,7 +42,7 @@ def extract_audio(video_path: str, audio_path: str | None = None) -> str:
         "-ar", "16000", "-ac", "1",
         "-y", str(audio_path),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run(cmd, check=True, capture_output=True)
     return audio_path
 
 
@@ -51,7 +61,7 @@ def separate_vocals(audio_path: str, output_path: str | None = None) -> str:
         "-af", "pan=mono|c0=FL+FR,highpass=f=200,lowpass=f=4000",
         "-y", str(output_path),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run(cmd, check=True, capture_output=True)
     return output_path
 
 
@@ -71,7 +81,7 @@ def remove_vocals(audio_path: str, output_path: str | None = None) -> str:
         "-af", "pan=stereo|c0=c0-c1|c1=c1-c0",
         "-y", str(output_path),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run(cmd, check=True, capture_output=True)
     return output_path
 
 
@@ -127,7 +137,7 @@ def split_video_clip(
             "-c:a", "aac", "-b:a", "192k",
             "-y", str(output_path),
         ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run(cmd, check=True, capture_output=True)
     return output_path
 
 
@@ -141,7 +151,7 @@ def split_video_segment(video_path: str, start: float, end: float, output_path: 
         "-y", str(output_path),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        _run(cmd, check=True, capture_output=True)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -157,7 +167,7 @@ def get_video_duration(video_path: str) -> float:
         "default=noprint_wrappers=1:nokey=1",
         str(video_path),
     ]
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    result = _run(cmd, check=True, capture_output=True, text=True)
     try:
         return float(result.stdout.strip())
     except Exception as e:
@@ -180,7 +190,7 @@ def get_video_metadata(video_path: str) -> dict:
         "-show_streams", "-select_streams", "v:0",
         str(video_path),
     ]
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    result = _run(cmd, check=True, capture_output=True, text=True)
     data = json.loads(result.stdout)
     streams = data.get("streams", [])
     if not streams:
@@ -280,7 +290,7 @@ def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str |
     # 提前探测视频是否有音轨，避免 ffmpeg 因缺失音轨崩溃
     has_audio = True
     try:
-        probe = subprocess.run(
+        probe = _run(
             [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-select_streams", "a:0",
              "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(vp)],
             capture_output=True, text=True, timeout=30,
@@ -319,7 +329,7 @@ def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str |
     ]
 
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        _run(cmd, check=True, capture_output=True)
     except Exception:
         raise
 
@@ -359,7 +369,7 @@ def concat_videos(
         if not pp.exists() or pp.stat().st_size == 0:
             continue
         try:
-            probe = subprocess.run(
+            probe = _run(
                 [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
                  "-of", "csv=p=0", str(p)],
                 capture_output=True, text=True, timeout=10,
@@ -410,7 +420,7 @@ def concat_videos(
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1:1",
             str(output)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = _run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             stderr = result.stderr[-1200:] if result.stderr else "(no stderr)"
             # 读取 concat 列表内容以辅助排查
@@ -477,6 +487,19 @@ def concat_with_audio_and_subs(
     for ap in audio_paths:
         cmd += ["-i", str(ap)]
 
+    # Probe source clips for audio — some clips are video-only
+    has_source_audio = False
+    if clip_paths:
+        try:
+            probe = _run(
+                [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(clip_paths[0])],
+                capture_output=True, text=True, timeout=10,
+            )
+            has_source_audio = probe.stdout.strip() == "audio"
+        except Exception:
+            has_source_audio = True  # probe failed, assume yes
+
     n_inputs = 1 + len(audio_paths)
     filters = []
 
@@ -491,23 +514,28 @@ def concat_with_audio_and_subs(
     chain = ",".join(video_filters)
     filters.append(f"[0:v]{chain}[v]")
 
-    # Audio chain: 有外部音频则混音，否则直通 concat 音轨
+    # Audio chain: 有外部音频则混音，有源音轨则直通，否则纯视频
+    has_audio_output = bool(audio_paths) or has_source_audio
     if audio_paths:
         audio_labels = [f"[{i}:a]" for i in range(n_inputs)]
         filters.append("".join(audio_labels) + f"amix=inputs={n_inputs}:duration=first[a]")
-    else:
+    elif has_source_audio:
         filters.append("[0:a]anull[a]")
 
     filter_graph = ";".join(filters)
     cmd += ["-filter_complex", filter_graph]
-    cmd += ["-map", "[v]", "-map", "[a]"]
+    cmd += ["-map", "[v]"]
+    if has_audio_output:
+        cmd += ["-map", "[a]"]
     cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
-    cmd += ["-c:a", "aac", "-pix_fmt", "yuv420p"]
+    if has_audio_output:
+        cmd += ["-c:a", "aac"]
+    cmd += ["-pix_fmt", "yuv420p"]
     cmd += ["-movflags", "+faststart"]
     cmd.append(str(output))
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(out_dir))
+        result = _run(cmd, capture_output=True, text=True, cwd=str(out_dir))
         if result.returncode != 0:
             stderr = result.stderr[-1200:] if result.stderr else "(no stderr)"
             raise RuntimeError(
@@ -546,7 +574,7 @@ def composite_subtitles(video_path: str, srt_path: str, output_path: str | None 
         "-c:a", "copy",
         "-y", str(output_path),
     ]
-    subprocess.run(cmd, check=True, capture_output=True, cwd=str(out_dir))
+    _run(cmd, check=True, capture_output=True, cwd=str(out_dir))
     return str(output_path)
 
 
@@ -609,7 +637,7 @@ def apply_video_effect(input_path: str, effect_key: str, output_path: str | None
         "-c:a", "copy",
         str(output_path),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run(cmd, check=True, capture_output=True)
     return str(output_path)
 
 
@@ -641,7 +669,7 @@ def concat_with_xfade(
     durations = []
     for sp in segment_paths:
         try:
-            probe = subprocess.run(
+            probe = _run(
                 [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-show_entries", "format=duration",
                  "-of", "csv=p=0", str(sp)],
                 capture_output=True, text=True, timeout=10,
@@ -691,6 +719,6 @@ def concat_with_xfade(
     cmd.extend(["-c:a", "aac"])
     cmd.append(str(output_path))
 
-    subprocess.run(cmd, check=True, capture_output=True)
+    _run(cmd, check=True, capture_output=True)
     return str(output_path)
     return output_path

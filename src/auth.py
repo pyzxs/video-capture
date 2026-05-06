@@ -1,8 +1,5 @@
 import hashlib
-import subprocess
 import uuid
-
-import requests
 
 from src.config import get_config, save_config
 from src.logger import get_logger
@@ -11,7 +8,7 @@ logger = get_logger("auth")
 
 
 def generate_machine_id() -> str:
-    """Generate a unique machine fingerprint from MAC address + disk serial."""
+    """Generate a unique machine fingerprint from MAC address + hostname."""
     fingerprints = []
 
     # MAC address
@@ -22,23 +19,12 @@ def generate_machine_id() -> str:
     except Exception:
         pass
 
-    # Disk serial (Windows)
+    # Hostname as secondary factor
     try:
-        result = subprocess.run(
-            ["wmic", "diskdrive", "get", "serialnumber"],
-            capture_output=True, text=True, timeout=10,
-        )
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line and line != "SerialNumber":
-                fingerprints.append(line)
-    except Exception:
-        pass
-
-    # Fallback: use hostname + random seed if hardware detection fails
-    if not fingerprints:
         import socket
         fingerprints.append(socket.gethostname())
+    except Exception:
+        pass
 
     raw = "|".join(fingerprints)
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
@@ -54,11 +40,14 @@ def get_auth_headers() -> dict:
 
 def _register_with_cms(machine_id: str) -> dict | None:
     """Call CMS /api/register to create a new user. Returns user info dict or None."""
+    from src.http_client import sync_post
+
     cms_url = get_config("cms_base_url")
     try:
-        resp = requests.post(
+        resp = sync_post(
             f"{cms_url}/api/register",
             json={"machine_id": machine_id},
+            headers={},
             timeout=15,
         )
         if resp.status_code == 200:
@@ -67,7 +56,7 @@ def _register_with_cms(machine_id: str) -> dict | None:
         else:
             logger.error("CMS registration failed (HTTP %s): %s", resp.status_code, resp.text[:200])
             return None
-    except requests.RequestException as e:
+    except Exception as e:
         logger.error("Cannot reach CMS at %s: %s", cms_url, e)
         return None
 

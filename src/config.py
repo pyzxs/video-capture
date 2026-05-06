@@ -26,7 +26,6 @@ BASE_DIR = _get_data_root()
 _DATA_ROOT = Path(BASE_DIR)
 
 _CONFIG_PATH = _DATA_ROOT / "config.enc"
-_LEGACY_PATH = _DATA_ROOT / "config.json"
 
 # ── 密钥派生 ──
 _SALT = b"video-capture\x00salt\x00v1"
@@ -48,25 +47,27 @@ def _get_fernet() -> Fernet:
     return Fernet(_derive_key())
 
 
-# ── 默认值 ──
+# ── 默认值（路径类配置使用 BASE_DIR 拼接为绝对路径） ──
 _DEFAULTS = {
     "llm_model": "deepseek-chat",
     "llm_provider": "deepseek",
     "asr_model_size": "base",
     "asr_api_model": "FunAudioLLM/SenseVoiceSmall",
-    "whisper_model_dir": "storage/model/whisper",
-    "vector_db_path": "storage/database/chroma_db",
+    "whisper_model_dir": f"{BASE_DIR}/storage/model/whisper",
+    "vector_db_path": f"{BASE_DIR}/storage/database/chroma_db",
     "embedding_model": "BAAI/bge-m3",
     "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
     "tts_voice": "FunAudioLLM/CosyVoice2-0.5B:anna",
-    "source_dir": "storage/videos/source",
-    "material_dir": "storage/videos/material",
-    "mixed_dir": "storage/videos/mixed",
-    "thumbnail_dir": "storage/thumbnails",
+    "source_dir": f"{BASE_DIR}/storage/videos/source",
+    "material_dir": f"{BASE_DIR}/storage/videos/material",
+    "mixed_dir": f"{BASE_DIR}/storage/videos/mixed",
+    "thumbnail_dir": f"{BASE_DIR}/storage/thumbnails",
+    "image_output_dir": f"{BASE_DIR}/storage/output/images",
+    "video_output_dir": f"{BASE_DIR}/storage/output/videos",
     "paragraph_gap_threshold": 2.0,
     "subtitle_crop_bottom": 0,
     "log_level": "INFO",
-    "log_dir": "logs",
+    "log_dir": f"{BASE_DIR}/logs",
     "cms_base_url": "https://video-capture.weigou365.cn",
     "user_id": "",
     "api_key": "",
@@ -81,6 +82,8 @@ _TYPE_MAP = {
     "vector_db_path": Path,
     "paragraph_gap_threshold": float,
     "thumbnail_dir": Path,
+    "image_output_dir": Path,
+    "video_output_dir": Path,
     "subtitle_crop_bottom": int,
     "log_dir": Path,
 }
@@ -106,28 +109,8 @@ def _ensure_fernet() -> Fernet | None:
     return _fernet
 
 
-def _migrate_legacy() -> dict | None:
-    """如果 config.enc 不存在但旧版 config.json 存在，迁移到加密格式。"""
-    if not _LEGACY_PATH.exists():
-        return None
-    try:
-        data = json.loads(_LEGACY_PATH.read_text(encoding="utf-8"))
-        # 立即保存为加密格式
-        f = _ensure_fernet()
-        if f is not None:
-            plain = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-            _CONFIG_PATH.write_bytes(f.encrypt(plain))
-        return data
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return None
-
-
 def _load() -> dict:
     if not _CONFIG_PATH.exists():
-        # 尝试从旧版 config.json 迁移
-        migrated = _migrate_legacy()
-        if migrated is not None:
-            return {**dict(_DEFAULTS), **migrated}
         return dict(_DEFAULTS)
 
     raw = _CONFIG_PATH.read_bytes()
@@ -140,13 +123,17 @@ def _load() -> dict:
 
 def get_config(key: str):
     """获取配置值（每次调用从 config.enc 重新读取）。"""
+    if key == "BASE_DIR":
+        return BASE_DIR
     val = _load().get(key, _DEFAULTS.get(key))
     typ = _TYPE_MAP.get(key)
     if typ is Path:
         p = Path(str(val))
         if not p.is_absolute():
             p = Path(BASE_DIR) / p
-        return p.resolve()
+        p = p.resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
     if typ is float:
         return float(val)
     if typ is int:
@@ -154,17 +141,19 @@ def get_config(key: str):
     return val
 
 
-def reload_config():
-    """重新加载 config.enc（写入端调用）。"""
-    pass  # get_config 每次重新读取，无需额外操作
-
-
 def save_config(data: dict):
-    """将配置字典加密写入 config.enc（仅写入非空值，保留文件中已有的值）。"""
+    """将配置字典加密写入 config.enc（仅写入非空值，路径类自动转为绝对路径）。"""
     current = _load()
     for k, v in data.items():
         if v:
-            current[k] = v
+            # 路径类型统一转成绝对路径字符串再保存
+            if _TYPE_MAP.get(k) is Path:
+                p = Path(str(v))
+                if not p.is_absolute():
+                    p = Path(BASE_DIR) / p
+                current[k] = str(p.resolve())
+            else:
+                current[k] = v
 
     plain = json.dumps(current, ensure_ascii=False, indent=2).encode("utf-8")
 

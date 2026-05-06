@@ -39,8 +39,8 @@ def call_agent(agent_key: str, user_message: str, max_tokens: int = 2000) -> str
     流程：查询 agent → 通过 CMS 代理调用 → 解析响应。
     若智能体不存在或 CMS 未配置则返回 user_message 原文。
     """
-    import requests
     from src.auth import get_auth_headers, update_local_quota
+    from src.http_client import sync_post
 
     cfg = get_agent_by_key(agent_key)
     if not cfg:
@@ -64,7 +64,7 @@ def call_agent(agent_key: str, user_message: str, max_tokens: int = 2000) -> str
             ],
             "max_tokens": max_tokens,
         }
-        resp = requests.post(
+        resp = sync_post(
             f"{cms_url}/api/proxy/llm",
             json=body, headers=headers, timeout=120,
         )

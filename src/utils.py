@@ -1,10 +1,14 @@
 """纯工具函数：时间格式转换、SRT/ASS 字幕解析。"""
 import mimetypes
 import re
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import imageio.v3 as iio
+
+_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 _TIMESTAMP_RE = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d+)"
@@ -78,7 +82,6 @@ def get_image_size(image_path):
 def generate_thumbnail(video_path: str) -> str:
     """从视频第1秒提取一帧作为缩略图，返回缩略图文件路径。失败返回空字符串。"""
     import hashlib
-    import subprocess
     from src.config import BASE_DIR, get_config
 
     thumb_dir = get_config("thumbnail_dir")
@@ -92,14 +95,18 @@ def generate_thumbnail(video_path: str) -> str:
             f"{BASE_DIR}/bin/ffmpeg", "-ss", "5", "-i", video_path,
             "-frames:v", "1", "-q:v", "3", "-vf", "scale=320:-1",
             str(thumb_path), "-y",
-        ], check=True, capture_output=True, timeout=10)
+        ], check=True, capture_output=True, timeout=10, creationflags=_CREATIONFLAGS)
         return str(thumb_path)
     except Exception:
         return ""
 
 
 def thumb_url(filepath: str) -> str:
-    """将缩略图文件路径转为前端可用的 URL。"""
+    """将缩略图文件路径转为前端可用的 URL。
+
+    使用绝对 URL（而非相对路径），避免 Electron 打包后 file:// 协议
+    下 <img src> 将相对路径解析为 file:///api/... 导致缩略图无法加载。
+    """
     if not filepath:
         return ""
-    return f"/api/thumbnails/{Path(filepath).name}"
+    return f"http://127.0.0.1:8090/api/thumbnails/{Path(filepath).name}"
