@@ -2,6 +2,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { materialApi, folderApi, exportApi } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 import { useFolders } from '../../composables/useFolders.js'
+import { usePlaybackGuard } from '../../composables/usePlaybackGuard.js'
 import Pagination from '../../components/Pagination.vue'
 
 export default {
@@ -10,6 +11,7 @@ export default {
   setup() {
     const toast = useToast()
     const { folders, selectedFolderId, loadFolders } = useFolders()
+    const { play: playOne, pause: pauseOne } = usePlaybackGuard()
     const folderMap = computed(() => {
       const m = {}
       for (const f of folders.value) m[f.id] = f.name
@@ -467,21 +469,25 @@ const mdInsertText = (before, after) => {
       activeVideos.value = s
       setTimeout(() => {
         const el = videoEls[id]
-        if (el) el.play()
+        if (el) playOne(el)
       }, 100)
     }
     const setVideoRef = (id, el) => { if (el) videoEls[id] = el }
-    const onVideoLoaded = (e) => { e.target.play() }
+    const onVideoLoaded = (e) => { playOne(e.target) }
 
     const hoverPlay = (e) => {
       const v = e.target
-      if (v.readyState >= 2) v.play()
+      if (v.readyState >= 2) playOne(v)
     }
 
     const hoverPause = (e) => {
       const v = e.target
-      v.pause()
+      pauseOne(v)
       v.currentTime = 0
+    }
+
+    const onAudioPlay = (e) => {
+      playOne(e.target)
     }
 
     const truncate = (s, n) => s && s.length > n ? s.slice(0, n) + '...' : s
@@ -512,7 +518,7 @@ const mdInsertText = (before, after) => {
       showDialog, editing, form, selectedFile, dragging, saving, fileInput,
       onFileSelect, onDrop, clearFile, formatSize, truncate,
       activeVideos, activateVideo, setVideoRef, onVideoLoaded,
-      hoverPlay, hoverPause, mdTextarea, showPreview, showEditPreview,
+      hoverPlay, hoverPause, onAudioPlay, mdTextarea, showPreview, showEditPreview,
       mdInsert, mdLink, renderMarkdown,
       audioMode, ttsText, ttsVoice, ttsBusy, ttsGenerate,
       showTtsPreview, ttsMdTextarea, ttsMdInsert, ttsMdLink,

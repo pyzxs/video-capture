@@ -13,8 +13,7 @@ from src.db.models import GeneratedVideo, Material, Video
 from src.processing.paragraph import merge_into_paragraphs
 from src.processing.ffmpeg import (
     extract_audio,
-    get_video_duration,
-    get_video_metadata,
+    get_video_info,
     separate_vocals,
     split_video_clip,
 )
@@ -53,8 +52,8 @@ def process_video(video_path: str, language: str = "zh") -> dict:
     logger.info("  → 形成 %d 个段落", len(paragraphs))
 
     logger.info("[3/6] 正在获取视频元数据...")
-    duration = get_video_duration(str(video_path))
-    meta = get_video_metadata(str(video_path))
+    meta = get_video_info(str(video_path))
+    duration = meta["duration"]
     logger.info("  → %.1f 秒, %dx%d @ %.2ffps", duration, meta["frame_width"], meta["frame_height"], meta["frame_rate"])
 
     logger.info("[4/6] 正在提取音频并分离人声...")

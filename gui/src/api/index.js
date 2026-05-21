@@ -84,8 +84,8 @@ export const videoApi = {
   split: (id, language) => api.post(`/videos/${id}/split`, null, { params: { language } }),
   splitAnalyze: (id, language) => api.post(`/videos/${id}/split/analyze`, null, { params: { language } }),
   splitCut: (id, data) => api.post(`/videos/${id}/split/cut`, data, { timeout: 600000 }),
-  smartSubtitles: (id) => api.post(`/videos/${id}/split/smart/subtitles`),
-  smartExtractAudio: (id) => api.post(`/videos/${id}/split/smart/extract-audio`),
+  smartSubtitles: (id) => api.post(`/videos/${id}/split/smart/subtitles`, null, { timeout: 600000 }),
+  smartExtractAudio: (id) => api.post(`/videos/${id}/split/smart/extract-audio`, null, { timeout: 600000 }),
   smartAnalyze: (id, data) => api.post(`/videos/${id}/split/smart/analyze`, data, { timeout: 600000 }),
   saveToNote: (id) => api.post(`/videos/${id}/save-to-notes`),
   rewriteChat: (id, data) => api.post(`/videos/${id}/rewrite-chat`, data, { timeout: 120000 }),
@@ -162,6 +162,8 @@ export const folderApi = {
 // ── Network Download ──
 export const downloadApi = {
   fromUrl: (data) => api.post('/videos/download', data, { timeout: 600000 }),
+  fromUrlStream: (data, onProgress, onComplete, onError) =>
+    _sseStream('/api/videos/download-stream', data, onProgress, onComplete, onError),
 }
 
 // ── Agents ──
@@ -202,12 +204,6 @@ export const profileApi = {
 // ── Editor ──
 export const editorApi = {
   extractSubtitles: (clips) => api.post('/editor/extract-subtitles', { clips }, { timeout: 300000 }),
-}
-
-// ── Resources ──
-export const resourceApi = {
-  status: () => api.get('/resources/status'),
-  download: () => api.post('/resources/download'),
 }
 
 // ── Export ──

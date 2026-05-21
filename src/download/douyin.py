@@ -3,7 +3,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import aiohttp
 
@@ -29,28 +29,39 @@ class DouyinDownloader(BaseDownloader):
 
         return await self._get_info_by_modal_id(modal_id)
 
-    async def download_video(self, video_info: VideoInfo, show_progress: bool = True) -> Path:
+    async def download_video(
+        self,
+        video_info: VideoInfo,
+        show_progress: bool = True,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> Path:
         """下载抖音视频"""
-        # 检查文件是否已存在
         existing_file = self._check_file_exists(video_info)
         if existing_file:
             if show_progress:
                 print(f"✓ 视频已存在，跳过下载: {existing_file}")
+            if progress_callback:
+                progress_callback(100)
             return existing_file
 
         output_path = self._get_video_filepath(video_info)
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(video_info.url, headers=self.HEADERS) as response:
-                if response.status != 200:
-                    raise Exception(f"下载失败: HTTP {response.status}")
+        try:
+            data = await self._download_bytes_with_retry(
+                video_info.url, headers=self.HEADERS, progress_callback=progress_callback
+            )
+        except Exception as e:
+            # 清理可能写入的不完整文件
+            if output_path.exists():
+                output_path.unlink()
+            raise Exception(f"抖音视频下载失败: {e}") from e
 
-                output_path.write_bytes(await response.read())
+        output_path.write_bytes(data)
 
-                if show_progress:
-                    print(f"✓ 视频已保存: {output_path}")
+        if show_progress:
+            print(f"✓ 视频已保存: {output_path}")
 
-                return output_path
+        return output_path
 
     @classmethod
     def match_url(cls, url: str) -> bool:

@@ -404,6 +404,57 @@
   flex-shrink: 0;
 }
 
+/* Download Progress */
+.dl-progress {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--bg-secondary, #f8f9fa);
+  border-radius: var(--radius);
+}
+.dl-progress-stage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+.dl-progress-stage.active {
+  opacity: 1;
+}
+.dl-progress-stage.done {
+  opacity: 0.7;
+}
+.dl-progress-label {
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 52px;
+  color: var(--text-secondary);
+}
+.dl-progress-stage.active .dl-progress-label {
+  color: var(--primary);
+}
+.dl-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border, #e0e0e0);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.dl-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.dl-progress-stage.done .dl-progress-fill {
+  background: var(--success, #52c41a);
+}
+.dl-progress-msg {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 4px 0 0;
+}
+
 /* Folder styles */
 .empty-hint {
   text-align: center;

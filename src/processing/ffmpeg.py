@@ -19,13 +19,65 @@ _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 def _run(cmd, **kwargs):
     """subprocess.run 包装，Windows 下自动隐藏控制台窗口。"""
     kwargs.setdefault("creationflags", _CREATIONFLAGS)
-    return _run(cmd, **kwargs)
+    return subprocess.run(cmd, **kwargs)
 
 
-# ── 音频相关 ──
-ffmpeg_prefix = rf"{BASE_DIR}/bin/"
+# ── bin 路径：打包后用 exe 同级目录下的 bin/，开发时用项目根下的 bin/ ──
+if getattr(sys, 'frozen', False):
+    _bin_dir = Path(sys.executable).parent / "bin"
+else:
+    _bin_dir = Path(BASE_DIR) / "bin"
 
-print(f"音频处理工具地址: {ffmpeg_prefix}")
+if sys.platform == "win32":
+    FFMPEG = str(_bin_dir / "ffmpeg.exe")
+    FFPROBE = str(_bin_dir / "ffprobe.exe")
+else:
+    FFMPEG = str(_bin_dir / "ffmpeg")
+    FFPROBE = str(_bin_dir / "ffprobe")
+
+# 兼容旧代码的 ffmpeg_prefix（外部模块仍在使用）
+ffmpeg_prefix = str(_bin_dir) + "/"
+
+print(f"音频处理工具地址: {_bin_dir}")
+
+
+# ── 硬件编码器检测（启动时探测一次，缓存结果） ──
+
+def _detect_hw_encoder() -> list[str]:
+    """探测可用的 H.264 硬件编码器，返回 ffmpeg 编码参数列表。"""
+    candidates = [
+        # NVIDIA NVENC
+        ["-c:v", "h264_nvenc", "-preset", "p1", "-rc", "vbr", "-cq", "18"],
+        # Intel QSV
+        ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "18"],
+        # AMD AMF
+        ["-c:v", "h264_amf", "-quality", "speed", "-rc", "cqp", "-qp_i", "18", "-qp_p", "18"],
+    ]
+    for params in candidates:
+        try:
+            cmd = [
+                FFMPEG, "-f", "lavfi", "-i", "nullsrc=s=256x256:d=0.1",
+                *params, "-frames:v", "1",
+                "-f", "null", "-y", os.devnull,
+            ]
+            _run(cmd, check=True, capture_output=True)
+            return params
+        except (subprocess.CalledProcessError, OSError):
+            continue
+    return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "18"]
+
+
+_HW_ENCODER: list[str] | None = None
+
+
+def _get_encoder() -> list[str]:
+    global _HW_ENCODER
+    if _HW_ENCODER is None:
+        _HW_ENCODER = _detect_hw_encoder()
+        encoder_name = _HW_ENCODER[1] if len(_HW_ENCODER) > 1 else "unknown"
+        logger.info(f"视频编码器: {encoder_name}")
+    return _HW_ENCODER
+
 
 def extract_audio(video_path: str, audio_path: str | None = None) -> str:
     """使用 ffmpeg 从视频中提取音频。
@@ -33,17 +85,45 @@ def extract_audio(video_path: str, audio_path: str | None = None) -> str:
     返回提取的 WAV 音频文件路径。
     """
     video_path = Path(video_path)
+    if video_path.suffix == ".part":
+        raise FileNotFoundError(f"视频文件未下载完成（.part 文件）: {video_path}")
+    if not video_path.exists():
+        raise FileNotFoundError(f"视频文件不存在: {video_path}")
     if audio_path is None:
         audio_path = str(ensure_date_dir(get_config("source_dir"), f"{video_path.stem}_audio.wav"))
 
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg", "-i", str(video_path),
+        FFMPEG, "-i", str(video_path),
         "-vn", "-acodec", "pcm_s16le",
         "-ar", "16000", "-ac", "1",
         "-y", str(audio_path),
     ]
     _run(cmd, check=True, capture_output=True)
     return audio_path
+
+
+def compress_audio_for_asr(audio_path: str) -> str:
+    """将音频压缩为 mp3 格式以减少上传体积（约缩小 4-5 倍）。
+
+    ASR 模型对 64kbps mono mp3 识别效果无损失。
+    如果压缩失败则返回原始路径。
+    """
+    audio_path = Path(audio_path)
+    if audio_path.suffix == ".mp3":
+        return str(audio_path)
+
+    mp3_path = audio_path.with_suffix(".mp3")
+    cmd = [
+        FFMPEG, "-i", str(audio_path),
+        "-vn", "-ar", "16000", "-ac", "1",
+        "-b:a", "64k",
+        "-y", str(mp3_path),
+    ]
+    try:
+        _run(cmd, check=True, capture_output=True)
+        return str(mp3_path)
+    except subprocess.CalledProcessError:
+        return str(audio_path)
 
 
 def separate_vocals(audio_path: str, output_path: str | None = None) -> str:
@@ -57,7 +137,7 @@ def separate_vocals(audio_path: str, output_path: str | None = None) -> str:
         output_path = str(p.parent / f"{p.stem}_vocals{p.suffix}")
 
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg", "-i", str(audio_path),
+        FFMPEG, "-i", str(audio_path),
         "-af", "pan=mono|c0=FL+FR,highpass=f=200,lowpass=f=4000",
         "-y", str(output_path),
     ]
@@ -77,7 +157,7 @@ def remove_vocals(audio_path: str, output_path: str | None = None) -> str:
         output_path = str(p.parent / f"{p.stem}_instrumental{p.suffix}")
 
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg", "-i", str(audio_path),
+        FFMPEG, "-i", str(audio_path),
         "-af", "pan=stereo|c0=c0-c1|c1=c1-c0",
         "-y", str(output_path),
     ]
@@ -102,13 +182,16 @@ def split_video_clip(
     若 no_audio=True，则输出不含音轨的纯视频片段。
     crop: ffmpeg crop 表达式，如 "1280:610:0:0"（裁掉底部 110px）
     """
+    enc = _get_encoder()
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg",
+        FFMPEG,
         "-ss", str(start), "-to", str(end),
         "-i", str(video_path),
     ]
     if no_audio:
-        cmd += ["-c:v", "libx264", "-crf", "18", "-an", "-y", str(output_path)]
+        if crop:
+            cmd += ["-vf", f"crop={crop}"]
+        cmd += [*enc, "-an", "-y", str(output_path)]
     elif vocals_path and Path(vocals_path).exists():
         cmd += [
             "-ss", str(start), "-to", str(end),
@@ -119,13 +202,12 @@ def split_video_clip(
         if crop:
             cmd += ["-vf", f"crop={crop}"]
         cmd += [
-            "-c:v", "libx264", "-crf", "18",
+            *enc,
             "-c:a", "aac", "-b:a", "192k",
             "-shortest",
             "-y", str(output_path),
         ]
     else:
-        # no separate vocals file — use original video's audio track
         cmd += [
             "-map", "0:v:0",
             "-map", "0:a:0",
@@ -133,7 +215,7 @@ def split_video_clip(
         if crop:
             cmd += ["-vf", f"crop={crop}"]
         cmd += [
-            "-c:v", "libx264", "-crf", "18",
+            *enc,
             "-c:a", "aac", "-b:a", "192k",
             "-y", str(output_path),
         ]
@@ -141,10 +223,36 @@ def split_video_clip(
     return output_path
 
 
+def split_clip_and_extract_audio(
+        video_path: str,
+        start: float,
+        end: float,
+        video_output: str,
+        audio_output: str,
+        no_audio: bool = False,
+) -> str:
+    """一次 ffmpeg 调用同时输出视频片段和 ASR 用音频，减少磁盘 I/O。"""
+    enc = _get_encoder()
+    cmd = [
+        FFMPEG,
+        "-ss", str(start), "-to", str(end),
+        "-i", str(video_path),
+    ]
+    if no_audio:
+        cmd += [*enc, "-an", "-y", str(video_output)]
+    else:
+        cmd += ["-map", "0:v:0", "-map", "0:a:0", *enc,
+                "-c:a", "aac", "-b:a", "192k", "-y", str(video_output)]
+    cmd += ["-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+            "-y", str(audio_output)]
+    _run(cmd, check=True, capture_output=True)
+    return video_output
+
+
 def split_video_segment(video_path: str, start: float, end: float, output_path: str) -> bool:
     """简单裁剪视频片段（无音频处理）。"""
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg",
+        FFMPEG,
         "-ss", str(start), "-to", str(end),
         "-i", str(video_path),
         "-c", "copy",
@@ -159,42 +267,40 @@ def split_video_segment(video_path: str, start: float, end: float, output_path: 
 
 # ── 视频元数据 ──
 
-def get_video_duration(video_path: str) -> float:
-    """使用 ffprobe 获取视频时长（秒）。"""
-    cmd = [
-        f"{ffmpeg_prefix}ffprobe", "-v", "error", "-show_entries",
-        "format=duration", "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        str(video_path),
-    ]
-    result = _run(cmd, check=True, capture_output=True, text=True)
-    try:
-        return float(result.stdout.strip())
-    except Exception as e:
-        logger.error(f"获取视频元数据 {e}")
-        return 0.0
-
-
-def get_video_metadata(video_path: str) -> dict:
-    """使用 ffprobe 获取视频分辨率、帧率等元数据。
+def get_video_info(video_path: str) -> dict:
+    """使用单次 ffprobe 调用获取视频时长、分辨率、帧率等元数据。
 
     返回：
         {
+            "duration": float,
             "frame_width": int,
             "frame_height": int,
             "frame_rate": float,
         }
     """
     cmd = [
-        f"{ffmpeg_prefix}ffprobe", "-v", "error", "-print_format", "json",
-        "-show_streams", "-select_streams", "v:0",
+        FFPROBE, "-v", "error", "-print_format", "json",
+        "-show_format", "-show_streams", "-select_streams", "v:0",
         str(video_path),
     ]
-    result = _run(cmd, check=True, capture_output=True, text=True)
+    try:
+        result = _run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        logger.error("ffprobe 获取视频信息失败: %s", e)
+        return {"duration": 0.0, "frame_width": 0, "frame_height": 0, "frame_rate": 0.0}
+
     data = json.loads(result.stdout)
+
+    duration = 0.0
+    fmt = data.get("format", {})
+    try:
+        duration = float(fmt.get("duration", 0))
+    except (ValueError, TypeError):
+        pass
+
     streams = data.get("streams", [])
     if not streams:
-        return {"frame_width": 0, "frame_height": 0, "frame_rate": 0.0}
+        return {"duration": duration, "frame_width": 0, "frame_height": 0, "frame_rate": 0.0}
 
     s = streams[0]
     w = s.get("width", 0)
@@ -205,7 +311,19 @@ def get_video_metadata(video_path: str) -> dict:
         fps = float(num) / float(den) if float(den) != 0 else 0.0
     else:
         fps = float(avg_fps)
-    return {"frame_width": w, "frame_height": h, "frame_rate": round(fps, 3)}
+
+    return {"duration": duration, "frame_width": w, "frame_height": h, "frame_rate": round(fps, 3)}
+
+
+def get_video_duration(video_path: str) -> float:
+    """获取视频时长（秒）。"""
+    return get_video_info(video_path)["duration"]
+
+
+def get_video_metadata(video_path: str) -> dict:
+    """获取视频分辨率、帧率等元数据（兼容旧接口）。"""
+    info = get_video_info(video_path)
+    return {"frame_width": info["frame_width"], "frame_height": info["frame_height"], "frame_rate": info["frame_rate"]}
 
 
 # ── 视频拼接 ──
@@ -224,10 +342,10 @@ def _resize_to_cover(clip, target_w: int, target_h: int):
 
 
 def concat_videos_by_movie(
-    clip_paths: list[str],
-    output_path: str,
-    target_width: int | None = None,
-    target_height: int | None = None,
+        clip_paths: list[str],
+        output_path: str,
+        target_width: int | None = None,
+        target_height: int | None = None,
 ) -> str:
     clips = []
     for file in clip_paths:
@@ -262,13 +380,14 @@ def concat_videos_by_movie(
     return output_path
 
 
-def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str | None = None) -> str:
+def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str | None = None, bg_volume: float = 1.0) -> str:
     """将多个音频文件混入视频中（保留原视频音轨并叠加音频素材）。
 
     参数：
         video_path: 输入视频路径（已拼接好的视频）。
         audio_paths: 音频文件路径列表（如背景音乐、音效）。
         output_path: 输出视频路径（为 None 时自动生成）。
+        bg_volume: 背景音频音量系数（0.0~1.0），默认 1.0 不衰减。
 
     返回输出视频路径。
     """
@@ -291,7 +410,7 @@ def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str |
     has_audio = True
     try:
         probe = _run(
-            [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-select_streams", "a:0",
+            [FFPROBE, "-v", "error", "-select_streams", "a:0",
              "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(vp)],
             capture_output=True, text=True, timeout=30,
         )
@@ -305,19 +424,33 @@ def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str |
         inputs = ["-i", str(vp)]
         for ap in audio_paths:
             inputs += ["-i", str(ap)]
-        filter_parts = [f"[{i}:a]" for i in range(n_inputs)]
-        filter_str = "".join(filter_parts) + f"amix=inputs={n_inputs}:duration=first[aud]"
+        if bg_volume < 1.0:
+            parts = [f"[0:a]volume=1.0[a0]"]
+            for i in range(len(audio_paths)):
+                parts.append(f"[{i+1}:a]volume={bg_volume:.2f}[a{i+1}]")
+            mix_inputs = "".join(f"[a{i}]" for i in range(n_inputs))
+            filter_str = ";".join(parts) + f";{mix_inputs}amix=inputs={n_inputs}:duration=first[aud]"
+        else:
+            filter_parts = [f"[{i}:a]" for i in range(n_inputs)]
+            filter_str = "".join(filter_parts) + f"amix=inputs={n_inputs}:duration=first[aud]"
     else:
         # 视频无音轨：仅混合音频素材
         n_inputs = len(audio_paths)
         inputs = ["-i", str(vp)]
         for ap in audio_paths:
             inputs += ["-i", str(ap)]
-        filter_parts = [f"[{i+1}:a]" for i in range(n_inputs)]
-        filter_str = "".join(filter_parts) + f"amix=inputs={n_inputs}:duration=first[aud]"
+        if bg_volume < 1.0:
+            parts = []
+            for i in range(len(audio_paths)):
+                parts.append(f"[{i+1}:a]volume={bg_volume:.2f}[a{i+1}]")
+            mix_inputs = "".join(f"[a{i+1}]" for i in range(len(audio_paths)))
+            filter_str = ";".join(parts) + f";{mix_inputs}amix=inputs={n_inputs}:duration=first[aud]"
+        else:
+            filter_parts = [f"[{i + 1}:a]" for i in range(n_inputs)]
+            filter_str = "".join(filter_parts) + f"amix=inputs={n_inputs}:duration=first[aud]"
 
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg",
+        FFMPEG,
         *inputs,
         "-filter_complex", filter_str,
         "-map", "0:v",
@@ -340,10 +473,10 @@ def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str |
 
 
 def concat_videos(
-    clip_paths: list[str],
-    output_path: str,
-    target_width: int | None = None,
-    target_height: int | None = None,
+        clip_paths: list[str],
+        output_path: str,
+        target_width: int | None = None,
+        target_height: int | None = None,
 ) -> str:
     """将多个视频片段直接拼接（无转场），使用 concat demuxer 流复制。
 
@@ -370,7 +503,7 @@ def concat_videos(
             continue
         try:
             probe = _run(
-                [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                [FFPROBE, "-v", "error", "-show_entries", "stream=codec_type",
                  "-of", "csv=p=0", str(p)],
                 capture_output=True, text=True, timeout=10,
             )
@@ -409,7 +542,7 @@ def concat_videos(
                     f.write(f"file '{Path(p).resolve().as_posix()}'\n")
 
         cmd = [
-            f"{ffmpeg_prefix}ffmpeg", "-y",
+            FFMPEG, "-y",
             "-f", "concat",
             "-safe", "0",
             "-i", str(list_path),
@@ -442,12 +575,12 @@ def concat_videos(
 
 
 def concat_with_audio_and_subs(
-    clip_paths: list[str],
-    output_path: str,
-    audio_paths: list[str] | None = None,
-    ass_path: str | None = None,
-    target_width: int | None = None,
-    target_height: int | None = None,
+        clip_paths: list[str],
+        output_path: str,
+        audio_paths: list[str] | None = None,
+        ass_path: str | None = None,
+        target_width: int | None = None,
+        target_height: int | None = None,
 ) -> str:
     """拼接视频 + 混音 + 字幕压制，一次 ffmpeg 调用完成（避免多次重编码）。"""
     import shutil
@@ -482,7 +615,7 @@ def concat_with_audio_and_subs(
             shutil.copy2(ass_path, sub_dest)
         sub_name = sub_dest.name
 
-    cmd = [f"{ffmpeg_prefix}ffmpeg", "-y"]
+    cmd = [FFMPEG, "-y"]
     cmd += ["-f", "concat", "-safe", "0", "-i", str(list_path)]
     for ap in audio_paths:
         cmd += ["-i", str(ap)]
@@ -492,7 +625,7 @@ def concat_with_audio_and_subs(
     if clip_paths:
         try:
             probe = _run(
-                [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-select_streams", "a:0",
+                [FFPROBE, "-v", "error", "-select_streams", "a:0",
                  "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(clip_paths[0])],
                 capture_output=True, text=True, timeout=10,
             )
@@ -508,7 +641,8 @@ def concat_with_audio_and_subs(
     if sub_name:
         video_filters.append(f"ass={sub_name}")
     if target_width and target_height:
-        video_filters.append(f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,setsar=1")
+        video_filters.append(
+            f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,setsar=1")
     if not video_filters:
         video_filters.append("copy")
     chain = ",".join(video_filters)
@@ -527,7 +661,7 @@ def concat_with_audio_and_subs(
     cmd += ["-map", "[v]"]
     if has_audio_output:
         cmd += ["-map", "[a]"]
-    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"]
     if has_audio_output:
         cmd += ["-c:a", "aac"]
     cmd += ["-pix_fmt", "yuv420p"]
@@ -568,7 +702,7 @@ def composite_subtitles(video_path: str, srt_path: str, output_path: str | None 
     else:
         vf = f"subtitles={sub_name}"
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg", "-i", str(video_path),
+        FFMPEG, "-i", str(video_path),
         "-vf", vf,
         "-c:v", "libx264", "-preset", "veryfast",
         "-c:a", "copy",
@@ -581,38 +715,38 @@ def composite_subtitles(video_path: str, srt_path: str, output_path: str | None 
 # ── 视频特效 ──
 
 EFFECT_FILTERS = {
-    'gray':      'hue=s=0',
-    'sepia':     'colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131',
-    'bright':    'eq=brightness=0.3',
-    'dark':      'eq=brightness=-0.4',
+    'gray': 'hue=s=0',
+    'sepia': 'colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131',
+    'bright': 'eq=brightness=0.3',
+    'dark': 'eq=brightness=-0.4',
     'hcontrast': 'eq=contrast=1.6:saturation=1.1',
-    'saturate':  'eq=saturation=2.0',
-    'desat':     'eq=saturation=0.3',
-    'vintage':   'colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131,eq=contrast=1.1:saturation=0.8',
-    'cool':      'eq=saturation=1.2,hue=h=180',
-    'warm':      'eq=saturation=1.4,hue=h=-30',
-    'blur':      'gblur=sigma=4',
-    'noir':      'hue=s=0,eq=contrast=1.4:brightness=-0.15',
-    'dramatic':  'eq=contrast=1.6:brightness=-0.1:saturation=1.3',
-    'soft':      'eq=brightness=0.1:contrast=0.9:saturation=0.9,gblur=sigma=0.5',
-    'invert':    'negate',
-    'pastel':    'eq=saturation=0.7:brightness=0.15:contrast=0.9',
-    'neon':      'eq=brightness=0.2:contrast=1.5:saturation=2.5',
-    'edgeglow':  'eq=brightness=0.08:contrast=1.05',
+    'saturate': 'eq=saturation=2.0',
+    'desat': 'eq=saturation=0.3',
+    'vintage': 'colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131,eq=contrast=1.1:saturation=0.8',
+    'cool': 'eq=saturation=1.2,hue=h=180',
+    'warm': 'eq=saturation=1.4,hue=h=-30',
+    'blur': 'gblur=sigma=4',
+    'noir': 'hue=s=0,eq=contrast=1.4:brightness=-0.15',
+    'dramatic': 'eq=contrast=1.6:brightness=-0.1:saturation=1.3',
+    'soft': 'eq=brightness=0.1:contrast=0.9:saturation=0.9,gblur=sigma=0.5',
+    'invert': 'negate',
+    'pastel': 'eq=saturation=0.7:brightness=0.15:contrast=0.9',
+    'neon': 'eq=brightness=0.2:contrast=1.5:saturation=2.5',
+    'edgeglow': 'eq=brightness=0.08:contrast=1.05',
 }
 
 XFADE_MAP = {
-    'crossfade':  'fade',
-    'fadeblack':  'fadeblack',
-    'fadewhite':  'fadewhite',
-    'wipeleft':   'wipeleft',
-    'wiperight':  'wiperight',
-    'wipeup':     'wipeup',
-    'wipedown':   'wipedown',
-    'radial':     'radial',
-    'zoomblur':   'zoomin',
-    'pagecurl':   'fade',
-    'shutter':    'horzopen',
+    'crossfade': 'fade',
+    'fadeblack': 'fadeblack',
+    'fadewhite': 'fadewhite',
+    'wipeleft': 'wipeleft',
+    'wiperight': 'wiperight',
+    'wipeup': 'wipeup',
+    'wipedown': 'wipedown',
+    'radial': 'radial',
+    'zoomblur': 'zoomin',
+    'pagecurl': 'fade',
+    'shutter': 'horzopen',
 }
 
 
@@ -631,7 +765,7 @@ def apply_video_effect(input_path: str, effect_key: str, output_path: str | None
         output_path = str(input_path.parent / f"{input_path.stem}_fx{input_path.suffix}")
 
     cmd = [
-        f"{ffmpeg_prefix}ffmpeg", "-y",
+        FFMPEG, "-y",
         "-i", str(input_path),
         "-vf", filter_str,
         "-c:a", "copy",
@@ -642,11 +776,11 @@ def apply_video_effect(input_path: str, effect_key: str, output_path: str | None
 
 
 def concat_with_xfade(
-    segment_paths: list[str],
-    transitions: list[dict],
-    output_path: str,
-    target_width: int | None = None,
-    target_height: int | None = None,
+        segment_paths: list[str],
+        transitions: list[dict],
+        output_path: str,
+        target_width: int | None = None,
+        target_height: int | None = None,
 ) -> str:
     """使用 xfade 滤镜将多个视频片段按转场拼接。
 
@@ -670,7 +804,7 @@ def concat_with_xfade(
     for sp in segment_paths:
         try:
             probe = _run(
-                [f"{ffmpeg_prefix}ffprobe", "-v", "error", "-show_entries", "format=duration",
+                [FFPROBE, "-v", "error", "-show_entries", "format=duration",
                  "-of", "csv=p=0", str(sp)],
                 capture_output=True, text=True, timeout=10,
             )
@@ -701,14 +835,14 @@ def concat_with_xfade(
 
         next_label = f"x{i}"
         filter_parts.append(
-            f"[{prev_label.replace(':', '')}][v{i+1}]xfade=transition={xfade_name}:duration={dur_sec:.2f}:offset={offset:.2f}[{next_label}]"
+            f"[{prev_label.replace(':', '')}][v{i + 1}]xfade=transition={xfade_name}:duration={dur_sec:.2f}:offset={offset:.2f}[{next_label}]"
         )
         prev_label = f"{next_label}"
 
     filter_graph = ";".join(filter_parts)
 
     # Build ffmpeg command
-    cmd = [f"{ffmpeg_prefix}ffmpeg", "-y"]
+    cmd = [FFMPEG, "-y"]
     for sp in segment_paths:
         cmd.extend(["-i", str(sp)])
     cmd.extend(["-filter_complex", filter_graph])

@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.response import fail_response
@@ -235,7 +236,7 @@ def _sync_text_materials(data_json: str, frame_width: int, frame_height: int, db
 
 def _make_segment(clip: dict, fp: str, fps: int, gen_id: int, temp_dir: str) -> str | None:
     import subprocess
-    from src.processing.ffmpeg import ffmpeg_prefix as ff
+    from src.processing.ffmpeg import FFMPEG, FFPROBE
 
     start_frame = clip.get("start", 0) or 0
     end_frame = clip.get("end", 0) or 0
@@ -253,24 +254,24 @@ def _make_segment(clip: dict, fp: str, fps: int, gen_id: int, temp_dir: str) -> 
 
     seg_path = str(Path(temp_dir) / f"seg_{gen_id}_{uuid.uuid4().hex[:8]}.mp4")
     cmd = [
-        f"{ff}ffmpeg", "-y",
+        FFMPEG, "-y",
         "-ss", f"{start_sec:.3f}",
         "-i", str(fp),
         "-t", f"{dur_sec:.3f}",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
         "-c:a", "aac",
         "-pix_fmt", "yuv420p",
         "-avoid_negative_ts", "make_zero",
         str(seg_path),
     ]
     try:
-        subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
+        subprocess.run(cmd, creationflags=_CREATIONFLAGS, check=True, capture_output=True)
         valid = False
         try:
-            probe = subprocess.run(creationflags=_CREATIONFLAGS,
-                [f"{ff}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+            probe = subprocess.run(
+                [FFPROBE, "-v", "error", "-show_entries", "stream=codec_type",
                  "-of", "csv=p=0", str(seg_path)],
-                capture_output=True, text=True, timeout=10,
+                creationflags=_CREATIONFLAGS, capture_output=True, text=True, timeout=10,
             )
             valid = bool(probe.stdout.strip())
         except Exception:
@@ -289,11 +290,11 @@ def _make_segment(clip: dict, fp: str, fps: int, gen_id: int, temp_dir: str) -> 
 
 def _extract_audio_segment(fp: str, duration_sec: float, gen_id: int, temp_dir: str) -> str | None:
     import subprocess
-    from src.processing.ffmpeg import ffmpeg_prefix as ff
+    from src.processing.ffmpeg import FFMPEG, FFPROBE
 
     seg_path = str(Path(temp_dir) / f"aud_{gen_id}_{uuid.uuid4().hex[:8]}.wav")
     cmd = [
-        f"{ff}ffmpeg", "-y",
+        FFMPEG, "-y",
         "-ss", "0",
         "-i", str(fp),
         "-t", f"{duration_sec:.3f}",
@@ -302,7 +303,7 @@ def _extract_audio_segment(fp: str, duration_sec: float, gen_id: int, temp_dir: 
         str(seg_path),
     ]
     try:
-        subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
+        subprocess.run(cmd, creationflags=_CREATIONFLAGS, check=True, capture_output=True)
         if Path(seg_path).exists() and Path(seg_path).stat().st_size > 0:
             return seg_path
         else:
@@ -419,7 +420,7 @@ def auto_search(data: AutoGenerateRequest) -> dict:
         raise fail_response(status_code=500, message=f"自动检索失败: {e}")
 
 
-def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
+def _execute_auto_generate(data: AutoGenerateRequest, db: Session, batch_index: int = 0) -> dict:
     if not data.description:
         raise fail_response(status_code=400, message="请提供描述信息")
 
@@ -465,6 +466,12 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
     if not matched_materials:
         raise fail_response(status_code=400, message="未找到匹配素材")
 
+    # 批量模式：打乱素材顺序以产生不同的视频和文案
+    if batch_index > 0:
+        import random
+        matched_materials = list(matched_materials)
+        random.shuffle(matched_materials)
+
     # 2. 收集源文件路径（去重，按素材顺序）
     clip_paths = []
     seen_paths = set()
@@ -483,22 +490,13 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
     concat_output = str(ensure_date_dir(get_config("mixed_dir"), f"{prefix_file}_concat.mp4"))
     concat_videos(clip_paths, concat_output, data.frame_width, data.frame_height)
 
-    # 3.5 混入背景音频（如果选择了音频素材）
-    if data.audio_material_id:
-        audio_mat = db.query(Material).get(data.audio_material_id)
-        if audio_mat and Path(audio_mat.filepath).exists():
-            try:
-                from src.processing.ffmpeg import mix_audio_tracks
-                concat_output = mix_audio_tracks(concat_output, [audio_mat.filepath])
-                logger.info("  → 已混入背景音频: %s", audio_mat.filename or audio_mat.filepath)
-            except Exception as e:
-                logger.warning("  → 背景音频混入失败: %s", e)
-
     total_dur = get_video_duration(concat_output) or 30.0
-    max_chars = int(total_dur * 4)
-    if len(script) > max_chars:
-        logger.info("  脚本 %d 字超过 %d 字限制（%.1fs × 4），截取前 %d 字", len(script), max_chars, total_dur, max_chars)
-        script = script[:max_chars]
+
+    # 3.5 根据核心主题 + 素材文案 + 视频时长，生成配音脚本
+    from src.services.llm import refine_dubbing_script
+    material_texts = [r.get("content", "") for r in matched_materials]
+    script = refine_dubbing_script(data.description, material_texts, total_dur, variation=batch_index)
+    logger.info("  配音脚本 %d 字（视频 %.1fs, batch=%d）", len(script), total_dur, batch_index)
 
     # 4. 配音
     audio_filepath = None
@@ -530,6 +528,19 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
             final_output = concat_output
     else:
         final_output = concat_output
+
+    # 4.5 混入背景音频（在配音之后，确保不被 dub_video 覆盖）
+    if data.audio_material_id:
+        audio_mat = db.query(Material).get(data.audio_material_id)
+        if audio_mat and Path(audio_mat.filepath).exists():
+            try:
+                from src.processing.ffmpeg import mix_audio_tracks
+                has_dubbing = audio_filepath and Path(audio_filepath).exists()
+                bg_vol = 0.2 if has_dubbing else 1.0
+                final_output = mix_audio_tracks(final_output, [audio_mat.filepath], bg_volume=bg_vol)
+                logger.info("  → 已混入背景音频 (vol=%.1f): %s", bg_vol, audio_mat.filename or audio_mat.filepath)
+            except Exception as e:
+                logger.warning("  → 背景音频混入失败: %s", e)
 
     # 5. 构建轨道数据
     material_list = []
@@ -577,11 +588,15 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
         })
 
     # 6. 创建混剪记录
+    final_duration = get_video_duration(final_output) or 0.0
+    from src.services.llm import generate_title
+    title = data.title or generate_title(script, matched_materials)
     gen = GeneratedVideo(
-        title=data.title or data.description,
+        title=title,
         script=script,
         tts_voice=data.tts_voice or "",
         output_filepath=final_output,
+        duration=final_duration,
         status="completed",
         frame_width=data.frame_width or 0,
         frame_height=data.frame_height or 0,
@@ -602,7 +617,7 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
 def auto_generate(data: AutoGenerateRequest, db: Session) -> dict:
     try:
         return _execute_auto_generate(data, db)
-    except fail_response:
+    except HTTPException:
         raise
     except Exception as e:
         raise fail_response(status_code=500, message=f"自动混剪失败: {e}")
@@ -615,7 +630,7 @@ def auto_batch_generate(data: AutoBatchGenerateRequest, db: Session) -> dict:
         try:
             result = _execute_auto_generate(data, db)
             return {"count": 1, "results": [result]}
-        except fail_response:
+        except HTTPException:
             raise
         except Exception as e:
             raise fail_response(status_code=500, message=f"自动混剪失败: {e}")
@@ -626,19 +641,19 @@ def auto_batch_generate(data: AutoBatchGenerateRequest, db: Session) -> dict:
     results = []
     errors = []
 
-    def _worker():
+    def _worker(idx):
         thread_db = SessionLocal()
         try:
-            return _execute_auto_generate(data, thread_db)
+            return _execute_auto_generate(data, thread_db, batch_index=idx)
         finally:
             thread_db.close()
 
     with ThreadPoolExecutor(max_workers=min(count, 10)) as executor:
-        futures = [executor.submit(_worker) for _ in range(count)]
+        futures = [executor.submit(_worker, i) for i in range(count)]
         for future in as_completed(futures):
             try:
                 results.append(future.result())
-            except fail_response as e:
+            except HTTPException as e:
                 errors.append(str(e.detail))
             except Exception as e:
                 errors.append(str(e))
@@ -656,7 +671,7 @@ def auto_batch_generate(data: AutoBatchGenerateRequest, db: Session) -> dict:
 def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None) -> GeneratedVideo:
     import subprocess
     from src.processing.ffmpeg import mix_audio_tracks, concat_videos
-    from src.processing.ffmpeg import ffmpeg_prefix as ff
+    from src.processing.ffmpeg import FFMPEG, FFPROBE
 
     try:
         clip_data = json.loads(gen.data) if gen.data else {}
@@ -713,7 +728,7 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
 
             seg_path = str(Path(temp_dir) / f"seg_{gen.id}_{uuid.uuid4().hex[:8]}.mp4")
             cmd = [
-                f"{ff}ffmpeg", "-y",
+                FFMPEG, "-y",
                 "-ss", f"{start_sec:.3f}",
                 "-i", str(fp),
                 "-t", f"{dur_sec:.3f}",
@@ -724,13 +739,13 @@ def _execute_generate(gen: GeneratedVideo, db: Session, voice: str | None = None
                 str(seg_path),
             ]
             try:
-                subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
+                subprocess.run(cmd, creationflags=_CREATIONFLAGS, check=True, capture_output=True)
                 valid = False
                 try:
-                    probe = subprocess.run(creationflags=_CREATIONFLAGS,
-                        [f"{ff}ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                    probe = subprocess.run(
+                        [FFPROBE, "-v", "error", "-show_entries", "stream=codec_type",
                          "-of", "csv=p=0", str(seg_path)],
-                        capture_output=True, text=True, timeout=10,
+                        creationflags=_CREATIONFLAGS, capture_output=True, text=True, timeout=10,
                     )
                     valid = bool(probe.stdout.strip())
                 except Exception:
@@ -854,7 +869,7 @@ def dub_generated_video(db: Session, gen_id: int, data: GenDubRequest) -> dict:
 def batch_generate_groups(db: Session, gen_id: int) -> dict:
     import itertools
     import subprocess
-    from src.processing.ffmpeg import ffmpeg_prefix as ff
+    from src.processing.ffmpeg import FFMPEG, FFPROBE, get_video_duration
 
     gen = db.query(GeneratedVideo).get(gen_id)
     if not gen:
@@ -921,32 +936,37 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
     Path(temp_dir).mkdir(parents=True, exist_ok=True)
 
     results = []
-    for combo_idx, combo in enumerate(combinations):
-        segment_paths = []
-        audio_paths = []
-        text_clips = []
 
-        for track in non_group_tracks:
-            for clip in track.get("list", []):
-                ctype = clip.get("type", "")
-                if ctype == "text":
-                    text_clips.append(clip)
-                    continue
-                fp = clip.get("filepath", "")
-                if not fp or not Path(fp).exists():
-                    mid = clip.get("material_id")
-                    if mid is not None:
-                        m = db.query(Material).get(mid)
-                        if m and Path(m.filepath).exists():
-                            fp = m.filepath
-                if not fp or not Path(fp).exists():
-                    continue
-                if ctype == "audio":
-                    audio_paths.append(fp)
-                    continue
-                seg = _make_segment(clip, fp, fps, gen_id, str(temp_dir))
-                if seg:
-                    segment_paths.append(seg)
+    # Pre-compute non-group segments (shared across all combinations)
+    shared_segment_paths = []
+    shared_audio_paths = []
+    shared_text_clips = []
+    for track in non_group_tracks:
+        for clip in track.get("list", []):
+            ctype = clip.get("type", "")
+            if ctype == "text":
+                shared_text_clips.append(clip)
+                continue
+            fp = clip.get("filepath", "")
+            if not fp or not Path(fp).exists():
+                mid = clip.get("material_id")
+                if mid is not None:
+                    m = db.query(Material).get(mid)
+                    if m and Path(m.filepath).exists():
+                        fp = m.filepath
+            if not fp or not Path(fp).exists():
+                continue
+            if ctype == "audio":
+                shared_audio_paths.append(fp)
+                continue
+            seg = _make_segment(clip, fp, fps, gen_id, str(temp_dir))
+            if seg:
+                shared_segment_paths.append(seg)
+
+    for combo_idx, combo in enumerate(combinations):
+        segment_paths = list(shared_segment_paths)
+        audio_paths = list(shared_audio_paths)
+        text_clips = shared_text_clips
 
         group_segments = []
         for vclip, aclip in combo:
@@ -1021,7 +1041,7 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
         except Exception:
             pass
 
-        for sp in all_segments:
+        for sp in group_segments:
             try:
                 if sp.startswith(str(temp_dir)):
                     Path(sp).unlink(missing_ok=True)
@@ -1085,6 +1105,7 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
             script=gen.script,
             data=reconstructed_data,
             output_filepath=output,
+            duration=get_video_duration(output) or 0.0,
             frame_width=gen.frame_width,
             frame_height=gen.frame_height,
             frame_rate=gen.frame_rate,
@@ -1097,6 +1118,14 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
         db.refresh(combo_gen)
         results.append(_gen_to_dict(combo_gen))
 
+    # Cleanup shared segments
+    for sp in shared_segment_paths:
+        try:
+            if sp.startswith(str(temp_dir)):
+                Path(sp).unlink(missing_ok=True)
+        except Exception:
+            pass
+
     if not results:
         raise fail_response(status_code=400, message="没有成功生成任何视频")
 
@@ -1107,7 +1136,7 @@ def batch_generate_groups_stream(db: Session, gen_id: int):
     """SSE 流式版本：逐条生成并实时推送进度"""
     import itertools
     import subprocess
-    from src.processing.ffmpeg import ffmpeg_prefix as ff
+    from src.processing.ffmpeg import FFMPEG, FFPROBE, get_video_duration
 
     gen = db.query(GeneratedVideo).get(gen_id)
     if not gen:
@@ -1127,7 +1156,7 @@ def batch_generate_groups_stream(db: Session, gen_id: int):
             result = _gen_to_dict(_execute_generate(gen, db))
             yield _sse_event("progress", {"current": 1, "total": 1, "video": result})
             yield _sse_event("complete", {"count": 1, "results": [result]})
-        except fail_response as e:
+        except HTTPException as e:
             yield _sse_event("error", {"message": str(e.detail)})
         except Exception as e:
             yield _sse_event("error", {"message": str(e)})
@@ -1183,32 +1212,37 @@ def batch_generate_groups_stream(db: Session, gen_id: int):
     Path(temp_dir).mkdir(parents=True, exist_ok=True)
 
     results = []
-    for combo_idx, combo in enumerate(combinations):
-        segment_paths = []
-        audio_paths = []
-        text_clips = []
 
-        for track in non_group_tracks:
-            for clip in track.get("list", []):
-                ctype = clip.get("type", "")
-                if ctype == "text":
-                    text_clips.append(clip)
-                    continue
-                fp = clip.get("filepath", "")
-                if not fp or not Path(fp).exists():
-                    mid = clip.get("material_id")
-                    if mid is not None:
-                        m = db.query(Material).get(mid)
-                        if m and Path(m.filepath).exists():
-                            fp = m.filepath
-                if not fp or not Path(fp).exists():
-                    continue
-                if ctype == "audio":
-                    audio_paths.append(fp)
-                    continue
-                seg = _make_segment(clip, fp, fps, gen_id, str(temp_dir))
-                if seg:
-                    segment_paths.append(seg)
+    # Pre-compute non-group segments (shared across all combinations)
+    shared_segment_paths = []
+    shared_audio_paths = []
+    shared_text_clips = []
+    for track in non_group_tracks:
+        for clip in track.get("list", []):
+            ctype = clip.get("type", "")
+            if ctype == "text":
+                shared_text_clips.append(clip)
+                continue
+            fp = clip.get("filepath", "")
+            if not fp or not Path(fp).exists():
+                mid = clip.get("material_id")
+                if mid is not None:
+                    m = db.query(Material).get(mid)
+                    if m and Path(m.filepath).exists():
+                        fp = m.filepath
+            if not fp or not Path(fp).exists():
+                continue
+            if ctype == "audio":
+                shared_audio_paths.append(fp)
+                continue
+            seg = _make_segment(clip, fp, fps, gen_id, str(temp_dir))
+            if seg:
+                shared_segment_paths.append(seg)
+
+    for combo_idx, combo in enumerate(combinations):
+        segment_paths = list(shared_segment_paths)
+        audio_paths = list(shared_audio_paths)
+        text_clips = shared_text_clips
 
         group_segments = []
         for vclip, aclip in combo:
@@ -1283,7 +1317,7 @@ def batch_generate_groups_stream(db: Session, gen_id: int):
         except Exception:
             pass
 
-        for sp in all_segments:
+        for sp in group_segments:
             try:
                 if sp.startswith(str(temp_dir)):
                     Path(sp).unlink(missing_ok=True)
@@ -1347,6 +1381,7 @@ def batch_generate_groups_stream(db: Session, gen_id: int):
             script=gen.script,
             data=reconstructed_data,
             output_filepath=output,
+            duration=get_video_duration(output) or 0.0,
             frame_width=gen.frame_width,
             frame_height=gen.frame_height,
             frame_rate=gen.frame_rate,
@@ -1362,6 +1397,14 @@ def batch_generate_groups_stream(db: Session, gen_id: int):
 
         yield _sse_event("progress", {"current": combo_idx + 1, "total": total, "video": result})
 
+    # Cleanup shared segments
+    for sp in shared_segment_paths:
+        try:
+            if sp.startswith(str(temp_dir)):
+                Path(sp).unlink(missing_ok=True)
+        except Exception:
+            pass
+
     if not results:
         yield _sse_event("error", {"message": "没有成功生成任何视频"})
     else:
@@ -1375,10 +1418,10 @@ def auto_batch_generate_stream(data: AutoBatchGenerateRequest, db: Session):
     results = []
     for i in range(count):
         try:
-            result = _execute_auto_generate(data, db)
+            result = _execute_auto_generate(data, db, batch_index=i)
             results.append(result)
             yield _sse_event("progress", {"current": i + 1, "total": count, "video": result})
-        except fail_response as e:
+        except HTTPException as e:
             yield _sse_event("error", {"message": str(e.detail)})
             return
         except Exception as e:

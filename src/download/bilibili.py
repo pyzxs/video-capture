@@ -1,19 +1,30 @@
 """B站视频下载器"""
 
 import asyncio
+import os
 import re
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import aiohttp
+import yt_dlp
 
 from .base import BaseDownloader, VideoInfo
 from ..config import BASE_DIR
 
-you_get_prefix = f"{BASE_DIR}/bin/"
+
+# ffmpeg 路径（与 src.processing.ffmpeg 保持一致的逻辑）
+if getattr(sys, 'frozen', False):
+    _bin_dir = Path(sys.executable).parent / "bin"
+else:
+    _bin_dir = Path(BASE_DIR) / "bin"
+
+_ffmpeg_exe = str(_bin_dir / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"))
+
 
 class BilibiliDownloader(BaseDownloader):
-    """B站视频下载器（基于 you-get）"""
+    """B站视频下载器（基于 yt-dlp）"""
 
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -25,80 +36,54 @@ class BilibiliDownloader(BaseDownloader):
         bvid = self._extract_bvid(url)
         return await self._get_info_by_bvid(bvid)
 
-    async def download_video(self, video_info: VideoInfo, show_progress: bool = True) -> Path:
-        """使用 you-get 下载B站视频"""
-        # 检查文件是否已存在
+    async def download_video(
+        self,
+        video_info: VideoInfo,
+        show_progress: bool = True,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> Path:
+        """使用 yt-dlp 下载B站视频"""
         existing_file = self._check_file_exists(video_info)
         if existing_file:
             if show_progress:
                 print(f"✓ 视频已存在，跳过下载: {existing_file}")
+            if progress_callback:
+                progress_callback(100)
             return existing_file
 
-        # 确保输出目录存在
-        output_dir = self.output_dir
-        output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 使用基类方法获取文件名
         output_path = self._get_video_filepath(video_info)
-        output_basename = output_path.stem
 
-        cmd = [
-            f"{you_get_prefix}you-get",
-            "--debug",
-            # "--json",
-            "-o",
-            str(output_dir),
-            "-O",
-            output_basename,
-            video_info.url,
-        ]
+        ydl_opts = {
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "outtmpl": str(output_path.with_suffix('')) + '.%(ext)s',
+            "merge_output_format": "mp4",
+            "ffmpeg_location": _ffmpeg_exe,
+            "quiet": not show_progress,
+            "no_warnings": True,
+            "extract_flat": False,
+        }
 
         if show_progress:
-            print(f"正在使用 you-get 下载: {video_info.title}")
-            # 让 you-get 输出到控制台
-            stdout_handle = None
-            stderr_handle = None
-        else:
-            # 静默模式，抑制输出
-            stdout_handle = asyncio.subprocess.PIPE
-            stderr_handle = asyncio.subprocess.PIPE
+            print(f"正在使用 yt-dlp 下载: {video_info.title}")
 
-        # 异步执行 you-get
-        process = await asyncio.create_subprocess_exec(
-            *cmd, stdout=stdout_handle, stderr=stderr_handle
-        )
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: _do_download(ydl_opts, video_info.url, progress_callback),
+            )
+        except Exception as e:
+            raise Exception(f"yt-dlp 下载失败: {str(e)[:500]}") from e
 
-        # 等待完成
-        stdout, stderr = await process.communicate()
-
-        if process.returncode != 0:
-            error_msg = stderr.decode("utf-8", errors="ignore") if stderr else "unknown error"
-            raise Exception(f"you-get 下载失败 (code {process.returncode}): {error_msg[:500]}")
-
-        possible_extensions = [".mp4", ".flv", ".mkv", ".webm"]
-        downloaded_file = None
-        for ext in possible_extensions:
-            candidate = output_dir / f"{output_basename}{ext}"
-            if candidate.exists():
-                downloaded_file = candidate
-                break
-
-        if not downloaded_file:
-            # 尝试查找以输出文件名开头的任意文件
-            for file in output_dir.glob(f"{output_basename}.*"):
-                downloaded_file = file
-                break
-
+        # yt-dlp 会在 outtmpl 基础上追加扩展名，查找实际输出文件
+        downloaded_file = self._find_downloaded_file(output_path.stem)
         if not downloaded_file:
             raise Exception("下载完成但未找到输出文件")
 
         if show_progress:
             print(f"✓ 视频已保存: {downloaded_file}")
-
-        xml_filename = Path(output_dir / f"{video_info.title}.cmt.xml")
-        if xml_filename.exists():
-            xml_filename.unlink()
-            print("✅ 清理测试视频文件")
 
         return downloaded_file
 
@@ -113,12 +98,10 @@ class BilibiliDownloader(BaseDownloader):
 
     def _extract_bvid(self, url: str) -> Optional[str]:
         """提取BV号"""
-        # 匹配BV号
         match = re.search(r"BV\w+", url)
         if match:
             return match.group(0)
 
-        # 匹配AV号
         match = re.search(r"av(\d+)", url, re.IGNORECASE)
         if match:
             return f"av{match.group(1)}"
@@ -138,7 +121,6 @@ class BilibiliDownloader(BaseDownloader):
 
                 video_data = data.get("data", {})
 
-                # 获取视频URL
                 video_url = f"https://www.bilibili.com/video/{bvid}"
 
                 return VideoInfo(
@@ -150,3 +132,20 @@ class BilibiliDownloader(BaseDownloader):
                     duration=video_data.get("duration"),
                     description=video_data.get("desc", "")[:500],
                 )
+
+
+def _do_download(ydl_opts: dict, url: str, progress_callback: Optional[Callable[[int], None]] = None) -> None:
+    """同步执行 yt-dlp 下载"""
+    if progress_callback:
+        def _hook(d):
+            if d.get("status") == "downloading":
+                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+                downloaded = d.get("downloaded_bytes", 0)
+                if total > 0:
+                    progress_callback(min(99, int(downloaded * 100 / total)))
+            elif d.get("status") == "finished":
+                progress_callback(100)
+        ydl_opts = {**ydl_opts, "progress_hooks": [_hook]}
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])

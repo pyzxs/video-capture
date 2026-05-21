@@ -200,13 +200,13 @@
 }
 .ph-select:focus { border-color: #6c5ce7; }
 .player-content {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  background: #f0f0f5; position: relative; overflow: hidden;
+  flex: 1; display: flex; align-items: safe center; justify-content: safe center;
+  background: #f0f0f5; position: relative; overflow: auto;
   min-height: 200px;
 }
 .player-canvas-wrap {
   position: relative; overflow: hidden; background: #fff;
-  border-radius: 4px;
+  border-radius: 4px; flex-shrink: 0;
 }
 .preview-canvas { display: block; }
 .player-empty {
@@ -409,6 +409,7 @@
 }
 .track-clip:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .track-clip.is-selected { border-color: #6c5ce7; box-shadow: 0 0 0 1px #6c5ce7, 0 2px 8px rgba(108,92,231,0.15); z-index: 3; }
+.track-clip.is-multi-selected { border-color: #6c5ce7; box-shadow: 0 0 0 1px #6c5ce7; z-index: 2; background: rgba(108,92,231,0.06); }
 .track-clip.is-dragging { opacity: 0.5; }
 
 .tc-header {
@@ -582,6 +583,7 @@
   border-radius: 5px; font-size: 12px; outline: none; background: #fff; color: #374151;
 }
 .attr-select:focus { border-color: #6c5ce7; }
+.attr-select.mixed-value { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
 .attr-color { width: 28px; height: 28px; padding: 0; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; background: none; }
 .attr-color::-webkit-color-swatch-wrapper { padding: 2px; }
 .attr-color::-webkit-color-swatch { border-radius: 3px; border: none; }
@@ -771,3 +773,21 @@
 .generate-video-meta {
   font-size: 11px; color: #9ca3af; margin-top: 2px;
 }
+.gen-modal-thumb-wrap {
+  width: 56px; height: 32px; border-radius: 4px; flex-shrink: 0;
+  background: #e5e7eb; overflow: hidden; position: relative;
+}
+.gen-modal-video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.gen-modal-actions {
+  display: flex; gap: 4px; flex-shrink: 0;
+}
+.gen-modal-btn {
+  width: 26px; height: 26px; border-radius: 4px; border: none;
+  background: #f3f4f6; color: #6b7280; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.gen-modal-btn:hover { background: #e5e7eb; color: #374151; }
+.gen-modal-btn-del:hover { background: #fee2e2; color: #dc2626; }

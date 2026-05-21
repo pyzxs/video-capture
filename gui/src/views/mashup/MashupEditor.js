@@ -109,7 +109,31 @@ export default {
       let list = localMaterials.value
       if (matSearch.value.trim()) {
         const q = matSearch.value.trim().toLowerCase()
-        list = list.filter(m => (m.content || '').toLowerCase().includes(q))
+        list = list.filter(m => (m.content || '').toLowerCase().includes(q) || (m.filename || '').toLowerCase().includes(q))
+      }
+      return list
+    })
+    const videoFilteredMaterials = computed(() => {
+      let list = videoMatItems.value
+      if (matSearch.value.trim()) {
+        const q = matSearch.value.trim().toLowerCase()
+        list = list.filter(m => (m.content || '').toLowerCase().includes(q) || (m.filename || '').toLowerCase().includes(q))
+      }
+      return list
+    })
+    const imageFilteredMaterials = computed(() => {
+      let list = imageMatItems.value
+      if (matSearch.value.trim()) {
+        const q = matSearch.value.trim().toLowerCase()
+        list = list.filter(m => (m.content || '').toLowerCase().includes(q) || (m.filename || '').toLowerCase().includes(q))
+      }
+      return list
+    })
+    const audioFilteredMaterials = computed(() => {
+      let list = audioMatItems.value
+      if (matSearch.value.trim()) {
+        const q = matSearch.value.trim().toLowerCase()
+        list = list.filter(m => (m.content || '').toLowerCase().includes(q) || (m.filename || '').toLowerCase().includes(q))
       }
       return list
     })
@@ -120,6 +144,15 @@ export default {
     const trackLines = ref([])
     const selectLine = ref(-1)
     const selectIndex = ref(-1)
+    const multiSelectClips = ref([]) // [{li, ci}, ...] for Ctrl+click multi-select
+    const isMultiSelect = computed(() => multiSelectClips.value.length > 1)
+    const multiSelectedClips = computed(() => {
+      if (!isMultiSelect.value) return []
+      return multiSelectClips.value
+        .map(({li, ci}) => trackLines.value[li]?.list[ci])
+        .filter(Boolean)
+    })
+    const clearMultiSelect = () => { multiSelectClips.value = [] }
     const totalFrames = ref(300)
     const playStartFrame = ref(0)
     const isPlaying = ref(false)
@@ -160,6 +193,7 @@ export default {
     })
 
     const canDeleteSelected = computed(() => {
+      if (isMultiSelect.value && multiSelectClips.value.length > 0) return true
       if (selectedClip.value) return true
       if (selectLine.value >= 0 && selectGroupIndex.value >= 0 && selectIndex.value < 0) {
         const line = trackLines.value[selectLine.value]
@@ -228,12 +262,60 @@ export default {
     ]
     const zoomOptions = [
       { label: '自适应', value: 'fit' },
+      { label: '300%', value: 3 },
       { label: '200%', value: 2 },
+      { label: '150%', value: 1.5 },
       { label: '100%', value: 1 },
+      { label: '75%', value: 0.75 },
       { label: '50%', value: 0.5 },
-      { label: '20%', value: 0.2 },
+      { label: '25%', value: 0.25 },
+      { label: '10%', value: 0.1 },
     ]
     const currentRatio = computed(() => ratioOptions[playerRatioIndex.value])
+
+    // 是否已根据第一个素材自动设置过画幅比率（一次编辑会话只自动一次）
+    const ratioAutoSet = ref(false)
+
+    // 根据素材宽高匹配最合适的画幅比率选项
+    function matchRatioIndex(width, height) {
+      if (!width || !height) return -1
+      const clipRatio = width / height
+      let bestIdx = 0
+      let bestScore = Infinity
+      for (let i = 0; i < ratioOptions.length; i++) {
+        const opt = ratioOptions[i]
+        const optRatio = opt.width / opt.height
+        const ratioDiff = Math.abs(clipRatio - optRatio)
+        const maxDim = Math.max(width, height)
+        const optMaxDim = Math.max(opt.width, opt.height)
+        const resoDiff = Math.abs(maxDim - optMaxDim) / Math.max(maxDim, 1)
+        // 主要按宽高比匹配度打分，其次按分辨率接近度
+        const score = ratioDiff * 100 + resoDiff * 0.01
+        if (score < bestScore) {
+          bestScore = score
+          bestIdx = i
+        }
+      }
+      return bestIdx
+    }
+
+    // 从轨道上第一个有效素材自动设置画幅比率
+    function tryAutoSetRatio() {
+      if (ratioAutoSet.value) return
+      for (const line of trackLines.value) {
+        if (line.locked || line.type === 'group') continue
+        for (const clip of line.list) {
+          if (clip.width && clip.height) {
+            const idx = matchRatioIndex(clip.width, clip.height)
+            if (idx >= 0) {
+              playerRatioIndex.value = idx
+              ratioAutoSet.value = true
+            }
+            return
+          }
+        }
+      }
+    }
 
     // Resize canvas to fill container (frame computed in drawToCanvas)
     function resizeCanvas() {
@@ -241,8 +323,19 @@ export default {
       const canvas = previewCanvas.value
       if (!container || !canvas) return
       const rect = container.getBoundingClientRect()
-      const w = Math.floor(Math.max(100, rect.width - 8))
-      const h = Math.floor(Math.max(60, rect.height - 8))
+      let w = Math.floor(Math.max(100, rect.width - 8))
+      let h = Math.floor(Math.max(60, rect.height - 8))
+
+      if (playerZoom.value !== 'fit') {
+        const zoom = playerZoom.value
+        const baseW = currentRatio.value.width
+        const baseH = currentRatio.value.height
+        const zoomedW = Math.floor(baseW * zoom) + 16
+        const zoomedH = Math.floor(baseH * zoom) + 16
+        w = Math.max(w, zoomedW)
+        h = Math.max(h, zoomedH)
+      }
+
       const ratio = window.devicePixelRatio || 1
       canvas.width = w * ratio
       canvas.height = h * ratio
@@ -457,10 +550,10 @@ export default {
           const ff = clip.fontFamily || 'sans-serif'
           const fw = clip.bold ? 'bold' : 'normal'
           const fst = clip.italic ? 'italic' : 'normal'
-          ctx.font = `${fst} ${fw} ${fs}px ${ff}`
+          const s = (clip.scale ?? 100) / 100
+          ctx.font = `${fst} ${fw} ${Math.round(fs * s)}px ${ff}`
           ctx.textAlign = clip.textAlign || 'center'
           ctx.textBaseline = 'middle'
-          const s = (clip.scale ?? 100) / 100
           const cx = (clip.centerX ?? 50) / 100
           const cy = (clip.centerY ?? 50) / 100
           const padX = 20
@@ -470,8 +563,8 @@ export default {
           if (ctx.textAlign === 'left') tx = frameX + frameW * cx + padX
           else if (ctx.textAlign === 'right') tx = frameX + frameW * cx - padX
           let displayTxt = txt
-          if (ctx.measureText(displayTxt).width * s > textMaxW) {
-            while (ctx.measureText(displayTxt + '…').width * s > textMaxW && displayTxt.length > 1) {
+          if (ctx.measureText(displayTxt).width > textMaxW) {
+            while (ctx.measureText(displayTxt + '…').width > textMaxW && displayTxt.length > 1) {
               displayTxt = displayTxt.slice(0, -1)
             }
             displayTxt += '…'
@@ -489,7 +582,7 @@ export default {
           // Background
           if (clip.bgEnabled && clip.bgColor) {
             const metrics = ctx.measureText(txt)
-            const tw = (Math.min(metrics.width, textMaxW) + 24) * s
+            const tw = Math.min(metrics.width, textMaxW) + 24 * s
             const th = fs * 1.5 * s
             let bgx = tx
             if (ctx.textAlign === 'center') bgx = tx - tw / 2
@@ -520,7 +613,7 @@ export default {
           const isTextSelected = !isPlaying.value && selectIndex.value >= 0 && selectedClip.value && clip.id === selectedClip.value.id
           if (isTextSelected) {
             const metrics = ctx.measureText(displayTxt)
-            const textW = metrics.width * s
+            const textW = metrics.width
             const textH = fs * 1.2 * s
             const boxPad = 12 * s
             const boxW = textW + boxPad * 2
@@ -926,6 +1019,7 @@ export default {
 
     // ── Playhead seek on timeline ──
     function onTimelineSeek(ev) {
+      clearMultiSelect()
       const area = ev.currentTarget
       if (!area) return
       const rect = area.getBoundingClientRect()
@@ -1181,6 +1275,35 @@ export default {
       { value: '"Noto Sans SC", sans-serif', label: 'Noto Sans' },
     ]
 
+    const fontSizeOptions = [
+      12, 14, 16, 18, 20, 22, 24, 26, 28, 30,
+      32, 36, 40, 44, 48, 52, 56, 60, 64, 72,
+      80, 88, 96, 104, 112, 120, 144, 160, 200,
+    ]
+
+    // Check if multi-selected clips have mixed values for a given property
+    const hasMixedValues = (key) => {
+      const clips = multiSelectedClips.value
+      if (clips.length < 2) return false
+      const first = clips[0][key]
+      return clips.some(c => c[key] !== first)
+    }
+
+    // Get the common value from multi-selected clips (returns first clip's value)
+    const getMultiValue = (key) => {
+      const clips = multiSelectedClips.value
+      return clips.length > 0 ? clips[0][key] : undefined
+    }
+
+    // Apply a property to all multi-selected clips
+    const applyMultiProperty = (key, value) => {
+      if (generating.value) return
+      for (const {li, ci} of multiSelectClips.value) {
+        const clip = trackLines.value[li]?.list[ci]
+        if (clip) clip[key] = value
+      }
+    }
+
     // ── Track operations ──
 
     // Helper: create a clip object from a material at given start frame
@@ -1384,9 +1507,26 @@ export default {
       textForm.value.styleIndex = 0
     }
 
-    const selectClip = (li, ci) => {
+    const selectClip = (li, ci, ev) => {
       const track = trackLines.value[li]
       if (track && track.locked) return
+      if (ev && ev.ctrlKey) {
+        // Ctrl+click: toggle clip in multi-select
+        const idx = multiSelectClips.value.findIndex(s => s.li === li && s.ci === ci)
+        if (idx >= 0) {
+          multiSelectClips.value.splice(idx, 1)
+        } else {
+          multiSelectClips.value.push({li, ci})
+        }
+        // Also set as primary selection for playhead
+        selectLine.value = li
+        selectIndex.value = ci
+        const clip = track?.list[ci]
+        if (clip) playStartFrame.value = clip.start
+        return
+      }
+      // Normal click: clear multi-select and single-select
+      clearMultiSelect()
       selectLine.value = li
       selectIndex.value = ci
       const clip = track?.list[ci]
@@ -1409,6 +1549,33 @@ export default {
 
     const deleteSelected = () => {
       if (generating.value) return
+      // Multi-select deletion: delete all selected clips
+      if (isMultiSelect.value && multiSelectClips.value.length > 0) {
+        // Sort by li descending, ci descending to delete from end to start
+        const sorted = [...multiSelectClips.value].sort((a, b) => b.li - a.li || b.ci - a.ci)
+        for (const {li, ci} of sorted) {
+          const line = trackLines.value[li]
+          if (!line || line.locked) continue
+          const clip = line.list[ci]
+          if (line.type === 'group' && clip && line.groups) {
+            for (const g of line.groups) {
+              const vi = (g.groupVideos || []).indexOf(clip.id)
+              if (vi >= 0) g.groupVideos.splice(vi, 1)
+              const ai = (g.groupAudios || []).indexOf(clip.id)
+              if (ai >= 0) g.groupAudios.splice(ai, 1)
+            }
+          }
+          line.list.splice(ci, 1)
+          if (line.list.length === 0 && !line.main) {
+            trackLines.value.splice(li, 1)
+          }
+        }
+        clearMultiSelect()
+        selectLine.value = -1
+        selectIndex.value = -1
+        updateTotalFrames()
+        return
+      }
       // Delete group card
       if (selectLine.value >= 0 && selectGroupIndex.value >= 0 && selectIndex.value < 0) {
         const line = trackLines.value[selectLine.value]
@@ -1540,11 +1707,11 @@ export default {
           fontColor: '#ffffff',
           bold: false,
           italic: false,
-          shadow: true,
-          outline: true,
+          shadow: false,
+          outline: false,
           outlineColor: '#000000',
-          bgColor: 'rgba(0,0,0,0.5)',
-          bgEnabled: true,
+          bgColor: '#000000',
+          bgEnabled: false,
           textAlign: 'center',
           effect: '',
           transitionIn: null,
@@ -2106,6 +2273,7 @@ export default {
         }
       }
       totalFrames.value = maxFrame + 60
+      tryAutoSetRatio()
     }
 
     // ── Scale ──
@@ -2278,10 +2446,39 @@ export default {
           await generatedApi.generate(editId.value, editVoice.value || undefined)
           toast.success('合成完成')
           generating.value = false
+          setTimeout(() => router.push({ name: 'Mashups' }), 1200)
         }
       } catch (e) {
         toast.error('合成失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
         generating.value = false
+      }
+    }
+
+    // ── Generated video modal: play & delete ──
+    const genModalPlayingId = ref(null)
+    const genModalVideoRefs = {}
+    const setGenModalVideoRef = (id) => (el) => { if (el) genModalVideoRefs[id] = el }
+    const playGenModalVideo = (v) => {
+      if (genModalPlayingId.value === v.id) {
+        genModalVideoRefs[v.id]?.pause()
+        genModalPlayingId.value = null
+        return
+      }
+      if (genModalPlayingId.value && genModalVideoRefs[genModalPlayingId.value]) {
+        genModalVideoRefs[genModalPlayingId.value].pause()
+      }
+      genModalPlayingId.value = v.id
+      nextTick(() => genModalVideoRefs[v.id]?.play())
+    }
+    const onGenModalVideoEnded = (id) => { if (genModalPlayingId.value === id) genModalPlayingId.value = null }
+    const deleteGenModalVideo = async (v) => {
+      try {
+        await generatedApi.remove(v.id)
+        generatedVideos.value = generatedVideos.value.filter(g => g.id !== v.id)
+        if (genModalPlayingId.value === v.id) genModalPlayingId.value = null
+        toast.success('已删除')
+      } catch (e) {
+        toast.error('删除失败')
       }
     }
 
@@ -2356,12 +2553,7 @@ export default {
         }
       } else if (ds.type === 'resize') {
         const d = Math.max(dx, dy) * (ds.handle === 'nw' || ds.handle === 'se' ? 1 : -1)
-        if (clip.type === 'image') {
-          clip.scale = Math.max(10, Math.min(300, ds.startScale + d * 0.5))
-        } else {
-          clip.fontSize = Math.max(14, Math.min(300, ds.startFS + d * 0.5))
-          clip.scale = Math.max(10, Math.min(300, ds.startScale + d * 0.3))
-        }
+        clip.scale = Math.max(10, Math.min(300, ds.startScale + d * 0.5))
       }
       drawToCanvas(false)
     }
@@ -2494,6 +2686,7 @@ export default {
           if (parsed.showSubtitles !== undefined) showSubtitles.value = parsed.showSubtitles
         } else {
           trackLines.value = [makeTrack('video', true)]
+          ratioAutoSet.value = false
         }
         // Restore aspect ratio from saved frame dimensions
         if (data.frame_width && data.frame_height) {
@@ -2517,6 +2710,7 @@ export default {
       if (isEditMode.value) loadGeneratedVideo()
       else {
         trackLines.value = [makeTrack('video', true)]
+        ratioAutoSet.value = false
       }
       nextTick(() => {
         drawRuler()
@@ -2565,12 +2759,17 @@ export default {
     watch(previewItem, () => { nextTick(() => drawToCanvas(false)) }, { immediate: true })
     watch(playStartFrame, () => { drawToCanvas(false); drawRuler() })
     watch([playerZoom, playerRatioIndex], () => { nextTick(resizeCanvas) })
-    watch(matFolderId, () => { loadLocalMaterials() })
+    watch(matFolderId, () => {
+      loadLocalMaterials()
+      loadTypeMaterials('video')
+      loadTypeMaterials('image')
+      loadTypeMaterials('audio')
+    })
     watch(activeMenu, (key) => {
       if (key === 'local') loadLocalMaterials()
-      else if (key === 'video' && videoMatItems.value.length === 0) loadTypeMaterials('video')
-      else if (key === 'image' && imageMatItems.value.length === 0) loadTypeMaterials('image')
-      else if (key === 'audio' && audioMatItems.value.length === 0) loadTypeMaterials('audio')
+      else if (key === 'video') loadTypeMaterials('video')
+      else if (key === 'image') loadTypeMaterials('image')
+      else if (key === 'audio') loadTypeMaterials('audio')
       else if (key === 'text' && textMatItems.value.length === 0) loadTypeMaterials('text')
     })
     // Watch clip attribute changes (position, scale, text style) for live preview
@@ -2619,12 +2818,15 @@ export default {
     return {
       h, icons,
       isEditMode, editId, form, saving, generating, generateProgress, generatedVideos, editVoice,
+      genModalPlayingId, setGenModalVideoRef, playGenModalVideo, onGenModalVideoEnded, deleteGenModalVideo,
       localMaterials, localFilteredMaterials, localLoading, localHasMore,
       videoMatItems, imageMatItems, audioMatItems, textMatItems,
+      videoFilteredMaterials, imageFilteredMaterials, audioFilteredMaterials,
       matSearch, matListRef, onMatScroll, activeMenu, menuItems, activeMenuLabel,
       matFolders, matFolderId,
-      textForm, textStylePresets, fontFamilies, viewMode, panelVisible, togglePanel,
-      trackScale, trackLines, selectLine, selectIndex, totalFrames,
+      textForm, textStylePresets, fontFamilies, fontSizeOptions, viewMode, panelVisible, togglePanel,
+      trackScale, trackLines, selectLine, selectIndex, multiSelectClips, isMultiSelect, multiSelectedClips,
+      clearMultiSelect, hasMixedValues, getMultiValue, applyMultiProperty, totalFrames,
       playStartFrame, isPlaying, selectedClip, canSplit,
       playerContentRef, previewCanvas, hiddenVideoRef, hiddenAudioRef, previewLoaded,
       previewItem, attrWidth, trackHeight,

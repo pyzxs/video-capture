@@ -1,4 +1,6 @@
 """Video business logic: CRUD, upload, download, split, dub, ASR handling."""
+import asyncio
+import json
 import re
 import shutil
 import subprocess
@@ -24,8 +26,8 @@ from src.config import get_config
 from src.db.models import Video
 from src.logger import default_logger as logger
 from src.pipelines import download
-from src.processing.asr import transcribe_return_text
-from src.processing.ffmpeg import get_video_duration, get_video_metadata, extract_audio
+from src.processing.asr import transcribe_return_text, transcribe_by_api
+from src.processing.ffmpeg import get_video_info, extract_audio
 from src.processing.paragraph import merge_into_paragraphs
 from src.processing.subtitle import get_timestamps
 from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
@@ -119,8 +121,8 @@ def upload_video(
         shutil.copyfileobj(file.file, f)
 
     filepath = str(dest)
-    duration = get_video_duration(filepath)
-    meta = get_video_metadata(filepath)
+    meta = get_video_info(filepath)
+    duration = meta["duration"]
 
     logger.info("获取视频元数据信息{} {}".format(meta, folder_id))
     v = Video(
@@ -147,7 +149,7 @@ def upload_video(
         try:
             try:
                 audio_path = extract_audio(filepath)
-                content = transcribe_return_text(audio_path, language=language)
+                content = transcribe_by_api(audio_path, language=language)
             except Exception as e:
                 logger.error(f"ASR 提取语音失败:{e}")
         except Exception as e:
@@ -180,8 +182,8 @@ async def download_video_service(db: Session, data: VideoDownloadRequest) -> dic
     logger.info("待下载视频目录: %s", dest.parent)
     video_info, filepath = await download.process_download(query_text, dest.parent, data.proxy or None)
     logger.info("视频已下载: %s", filepath)
-    duration = get_video_duration(str(filepath))
-    meta = get_video_metadata(str(filepath))
+    meta = get_video_info(str(filepath))
+    duration = meta["duration"]
 
     logger.info("视频元数据: %s", meta)
     v = Video(
@@ -199,13 +201,14 @@ async def download_video_service(db: Session, data: VideoDownloadRequest) -> dic
     content = ""
     if data.extract_text:
         try:
-            try:
-                audio_path = extract_audio(str(filepath))
-                content = transcribe_return_text(audio_path)
-            except Exception as e:
-                logger.error(f"ASR 提取语音失败:{e}")
+            audio_path = extract_audio(str(filepath))
+            content = transcribe_by_api(audio_path)
         except Exception as e:
-            logger.error("ASR 处理失败: %s", e)
+            logger.error(f"ASR 提取语音失败:{e}")
+    # 小红书等平台自带笔记文案
+    if not content and video_info.description:
+        content = video_info.description
+        logger.info("使用平台描述作为文案: %d 字", len(content))
 
     v.status = "completed"
     v.content = content
@@ -214,6 +217,101 @@ async def download_video_service(db: Session, data: VideoDownloadRequest) -> dic
     db.refresh(v)
 
     return _video_to_dict(v)
+
+
+def _sse_event(event_type: str, data: dict) -> str:
+    return f"data: {json.dumps({'type': event_type, **data}, ensure_ascii=False)}\n\n"
+
+
+async def download_video_stream(db: Session, data: VideoDownloadRequest):
+    """SSE 生成器：带进度的视频下载流程。"""
+    try:
+        query_text = data.urls.strip()
+        if not query_text:
+            yield _sse_event("error", {"message": "请提供视频地址或分享内容"})
+            return
+
+        url_match = re.search(r'https?://[^\s,，。；！？、“”‘’【】《》<>^`{|}]+', query_text)
+        if url_match:
+            query_text = url_match.group(0)
+
+        dest = ensure_date_dir(get_config("source_dir"), "tmp.mp4")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        # 阶段1: 视频下载
+        yield _sse_event("progress", {"stage": "download", "progress": 0, "message": "开始下载..."})
+
+        progress_queue = asyncio.Queue()
+
+        def on_download_progress(percent):
+            progress_queue.put_nowait(percent)
+
+        download_task = asyncio.create_task(
+            download.process_download(query_text, dest.parent, data.proxy or None, progress_callback=on_download_progress)
+        )
+
+        last_pct = 0
+        while not download_task.done():
+            try:
+                pct = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                if pct > last_pct:
+                    last_pct = pct
+                    yield _sse_event("progress", {"stage": "download", "progress": pct, "message": f"下载中 {pct}%"})
+            except asyncio.TimeoutError:
+                continue
+
+        video_info, filepath = download_task.result()
+        yield _sse_event("progress", {"stage": "download", "progress": 100, "message": "下载完成"})
+
+        # 获取视频元数据
+        meta = get_video_info(str(filepath))
+        duration = meta["duration"]
+
+        # 创建数据库记录
+        v = Video(
+            filename=str(video_info.title),
+            filepath=str(filepath),
+            duration=duration,
+            frame_width=meta.get("frame_width", 0),
+            frame_height=meta.get("frame_height", 0),
+            frame_rate=meta.get("frame_rate", 0.0),
+            status="completed",
+            thumbnail=generate_thumbnail(str(filepath)),
+            folder_id=data.folder_id,
+        )
+
+        content = ""
+        if data.extract_text:
+            # 阶段2: 提取音频
+            yield _sse_event("progress", {"stage": "audio", "progress": 0, "message": "正在提取音频..."})
+            try:
+                audio_path = extract_audio(str(filepath))
+                yield _sse_event("progress", {"stage": "audio", "progress": 100, "message": "音频提取完成"})
+            except Exception as e:
+                yield _sse_event("progress", {"stage": "audio", "progress": 100, "message": f"音频提取失败: {e}"})
+                audio_path = None
+
+            # 阶段3: ASR 转文本
+            if audio_path:
+                yield _sse_event("progress", {"stage": "asr", "progress": 0, "message": "正在识别文本..."})
+                try:
+                    content = transcribe_by_api(audio_path)
+                    yield _sse_event("progress", {"stage": "asr", "progress": 100, "message": "文案提取完成"})
+                except Exception as e:
+                    yield _sse_event("progress", {"stage": "asr", "progress": 100, "message": f"文案提取失败: {e}"})
+        else:
+            if video_info.description:
+                content = video_info.description
+
+        v.content = content
+        db.add(v)
+        db.commit()
+        db.refresh(v)
+
+        yield _sse_event("complete", {"data": _video_to_dict(v)})
+    except Exception as e:
+        logger.error("下载流处理失败: %s", e)
+        yield _sse_event("error", {"message": str(e)})
 
 
 def get_video_file_path(db: Session, video_id: int) -> str:
@@ -351,10 +449,10 @@ def smart_split_analyze(db: Session, video_id: int, audio_path: str, language: s
 
 
 def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, remove_audio: bool) -> dict:
-    import subprocess
-    from src.processing.ffmpeg import split_video_clip
+    import os
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from src.processing.ffmpeg import split_video_clip, split_clip_and_extract_audio
     from src.db.models import Material as MaterialModel
-    from src.config import BASE_DIR
     from src.api.schemas import MaterialOut
 
     v = db.query(Video).get(video_id)
@@ -363,66 +461,99 @@ def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, 
     if not Path(v.filepath).exists():
         raise fail_response(status_code=404, message="视频文件不存在")
 
-    ffmpeg_cmd = f"{BASE_DIR}/bin/ffmpeg"
+    if not paragraphs:
+        return SplitCutOut(material_count=0, material_ids=[], materials=[])
 
-    materials = []
-    material_ids = []
-    seg_audio = ""
-    for p in paragraphs:
+    def _process_paragraph(p):
         seg_path = ensure_date_dir(get_config("material_dir"), f"seg_{video_id}_{p.seq_index}.mp4")
         seg_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            split_video_clip(
-                video_path=v.filepath,
-                vocals_path="",
-                start=p.start,
-                end=p.end,
-                output_path=str(seg_path),
-                no_audio=remove_audio,
-            )
-        except Exception:
-            continue
-
         text = p.text or ""
-        if extract_text and not text.strip():
+        need_asr = extract_text and not text.strip()
+
+        if need_asr:
+            seg_audio = str(ensure_date_dir(
+                get_config("material_dir"), f"seg_audio_{video_id}_{p.seq_index}.wav"))
             try:
-                seg_audio = str(ensure_date_dir(
-                    get_config("material_dir"), f"seg_audio_{video_id}_{p.seq_index}.wav"))
-                subprocess.run([
-                    ffmpeg_cmd, "-ss", str(p.start), "-to", str(p.end),
-                    "-i", str(v.filepath),
-                    "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
-                    "-y", seg_audio,
-                ], check=True, capture_output=True, creationflags=_CREATIONFLAGS)
-                text = transcribe_return_text(seg_audio)
+                split_clip_and_extract_audio(
+                    video_path=v.filepath,
+                    start=p.start,
+                    end=p.end,
+                    video_output=str(seg_path),
+                    audio_output=seg_audio,
+                    no_audio=remove_audio,
+                )
+            except Exception:
+                return None
+            try:
+                text = transcribe_by_api(seg_audio)
             except Exception:
                 text = ""
             finally:
-                if seg_audio:
-                    Path(seg_audio).unlink(missing_ok=True)
+                Path(seg_audio).unlink(missing_ok=True)
+        else:
+            try:
+                split_video_clip(
+                    video_path=v.filepath,
+                    vocals_path="",
+                    start=p.start,
+                    end=p.end,
+                    output_path=str(seg_path),
+                    no_audio=remove_audio,
+                )
+            except Exception:
+                return None
 
-        mat_filename = p.title or seg_path.name
+        thumbnail = generate_thumbnail(str(seg_path))
+        return {
+            "seg_path": seg_path,
+            "text": text,
+            "title": p.title,
+            "start": p.start,
+            "end": p.end,
+            "thumbnail": thumbnail,
+        }
+
+    max_workers = min(len(paragraphs), 6)
+    results = [None] * len(paragraphs)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_idx = {
+            executor.submit(_process_paragraph, p): i
+            for i, p in enumerate(paragraphs)
+        }
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                results[idx] = future.result()
+            except Exception:
+                results[idx] = None
+
+    materials = []
+    material_ids = []
+    for r in results:
+        if r is None:
+            continue
+        mat_filename = r["title"] or r["seg_path"].name
         mat = MaterialModel(
             type="video",
-            content=text,
-            start_time=p.start,
-            end_time=p.end,
+            content=r["text"],
+            start_time=r["start"],
+            end_time=r["end"],
             frame_width=v.frame_width,
             frame_height=v.frame_height,
             frame_rate=v.frame_rate,
             filename=mat_filename,
-            filepath=str(seg_path),
-            thumbnail=generate_thumbnail(str(seg_path)),
+            filepath=str(r["seg_path"]),
+            thumbnail=r["thumbnail"],
         )
         db.add(mat)
         db.flush()
         material_ids.append(mat.id)
         materials.append(MaterialOut.model_validate(mat).model_dump(mode="json"))
 
-        if text:
+        if r["text"]:
             try:
                 from src.db.vector import VectorStore
-                VectorStore().add_material(mat.id, text, {
+                VectorStore().add_material(mat.id, r["text"], {
                     "type": mat.type,
                     "start_time": mat.start_time,
                     "end_time": mat.end_time,
@@ -512,8 +643,9 @@ def split_video_full(db: Session, video_id: int, language: str = "zh") -> dict:
 
 
 def save_video_to_notes(db: Session, video_id: int) -> dict:
+    import threading
+    from src.db.engine import SessionLocal
     from src.db.models import Note as NoteModel
-    from src.services.agents import call_agent
     from src.api.schemas import NoteOut
 
     v = db.query(Video).get(video_id)
@@ -522,8 +654,6 @@ def save_video_to_notes(db: Session, video_id: int) -> dict:
     if not v.content:
         raise fail_response(status_code=400, message="视频暂无文案")
 
-    formatted = call_agent("note_ast", v.content, max_tokens=4000)
-
     folder = db.query(NoteModel).filter(
         NoteModel.is_system == True,
         NoteModel.tp == "folder",
@@ -531,12 +661,34 @@ def save_video_to_notes(db: Session, video_id: int) -> dict:
 
     note = NoteModel(
         title=v.filename or f"视频 #{video_id} 笔记",
-        content=formatted,
+        content=v.content,
         parent_id=folder.id if folder else None,
         tp="note",
     )
     db.add(note)
     db.commit()
     db.refresh(note)
+
+    note_id = note.id
+    raw_content = v.content
+
+    def _format_in_background():
+        from src.services.agents import call_agent
+        from src.logger import default_logger as logger
+        try:
+            formatted = call_agent("note_ast", raw_content, max_tokens=4000)
+            if formatted and formatted != raw_content:
+                bg_db = SessionLocal()
+                try:
+                    n = bg_db.query(NoteModel).get(note_id)
+                    if n:
+                        n.content = formatted
+                        bg_db.commit()
+                finally:
+                    bg_db.close()
+        except Exception as e:
+            logger.warning("笔记格式化失败: %s", e)
+
+    threading.Thread(target=_format_in_background, daemon=True).start()
 
     return NoteOut.model_validate(note).model_dump(mode="json")

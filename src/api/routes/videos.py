@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_db
@@ -14,6 +14,7 @@ from src.api.schemas import (
 from src.api.services.video_service import (
     delete_video,
     download_video_service,
+    download_video_stream,
     dub_video_service,
     get_video,
     get_video_file_path,
@@ -75,6 +76,15 @@ def _upload_video(
 async def _download_video(data: VideoDownloadRequest, db: Session = Depends(get_db)):
     result = await download_video_service(db, data)
     return response_success(data=result, message="视频下载成功")
+
+
+@router.post("/download-stream", description="网络下载视频（SSE 进度流）")
+async def _download_video_stream(data: VideoDownloadRequest, db: Session = Depends(get_db)):
+    return StreamingResponse(
+        download_video_stream(db, data),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/{video_id}/file")

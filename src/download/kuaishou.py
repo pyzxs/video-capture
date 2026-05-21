@@ -4,7 +4,7 @@ import json
 import re
 from http.cookies import SimpleCookie
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 from urllib.parse import parse_qs
 
 import aiofiles
@@ -121,16 +121,13 @@ class KuaishouDownloader(BaseDownloader):
             metadata=video_data,
         )
 
-    async def download_video(self, video_info: VideoInfo, show_progress: bool = True) -> Path:
-        """下载快手视频
-
-        Args:
-            video_info: 视频信息
-            show_progress: 是否显示进度条
-
-        Returns:
-            Path: 下载后的文件路径
-        """
+    async def download_video(
+        self,
+        video_info: VideoInfo,
+        show_progress: bool = True,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> Path:
+        """下载快手视频"""
         print("视频信息：{}".format(video_info))
         if not video_info.url:
             raise ValueError("视频下载链接为空")
@@ -140,6 +137,8 @@ class KuaishouDownloader(BaseDownloader):
         if existing_file:
             if show_progress:
                 print(f"✓ 视频已存在，跳过下载: {existing_file}")
+            if progress_callback:
+                progress_callback(100)
             return existing_file
 
         output_path = self._get_video_filepath(video_info)
@@ -167,12 +166,12 @@ class KuaishouDownloader(BaseDownloader):
                     ) as response:
                         response.raise_for_status()
                         await self._download_with_progress(
-                            response, temp_path, 0, show_progress, video_info.title
+                            response, temp_path, 0, show_progress, video_info.title, progress_callback
                         )
                 else:
                     response.raise_for_status()
                     await self._download_with_progress(
-                        response, temp_path, resume_pos, show_progress, video_info.title
+                        response, temp_path, resume_pos, show_progress, video_info.title, progress_callback
                     )
 
         # 重命名临时文件
@@ -190,11 +189,13 @@ class KuaishouDownloader(BaseDownloader):
         resume_pos: int,
         show_progress: bool,
         title: str,
+        progress_callback: Optional[Callable[[int], None]] = None,
     ):
         """带进度条的下载"""
         total_size = int(response.headers.get("Content-Length", 0)) + resume_pos
 
         mode = "ab" if resume_pos > 0 else "wb"
+        downloaded = resume_pos
         async with aiofiles.open(temp_path, mode) as f:
             if show_progress:
                 with tqdm(
@@ -207,9 +208,17 @@ class KuaishouDownloader(BaseDownloader):
                     async for chunk in response.content.iter_chunked(1024 * 1024):
                         await f.write(chunk)
                         pbar.update(len(chunk))
+                        downloaded += len(chunk)
+                        if progress_callback and total_size > 0:
+                            progress_callback(min(99, int(downloaded * 100 / total_size)))
             else:
                 async for chunk in response.content.iter_chunked(1024 * 1024):
                     await f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback and total_size > 0:
+                        progress_callback(min(99, int(downloaded * 100 / total_size)))
+        if progress_callback:
+            progress_callback(100)
 
     @classmethod
     def match_url(cls, url: str) -> bool:

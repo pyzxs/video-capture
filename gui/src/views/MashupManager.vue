@@ -119,7 +119,7 @@
           <div class="progress-bar">
             <div class="progress-fill"></div>
           </div>
-          <span>LLM 扩写 → 检索素材 → 拼接 → 配音，请稍候...</span>
+          <span>LLM 扩写 → 检索素材 → 拼接 → 配音  → 背景音乐 ，请稍候...</span>
         </div>
         <div class="modal-actions">
           <button class="btn btn-default" @click="closeAuto" :disabled="autoProcessing">取消</button>

@@ -106,8 +106,17 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>上传视频</span>
               </div>
+              <div class="mat-search-row">
+                <input v-model="matSearch" class="resource-search" placeholder="搜索视频..." />
+              </div>
+              <div class="mat-folder-row">
+                <select v-model="matFolderId" class="mat-folder-select" title="按文件夹筛选">
+                  <option value="">全部文件夹</option>
+                  <option v-for="f in matFolders" :key="f.id" :value="f.id">{{ f.name }}</option>
+                </select>
+              </div>
               <div class="resource-grid" :class="viewMode">
-                <div v-for="m in videoMatItems" :key="m.id" class="resource-item" :class="'r-' + viewMode"
+                <div v-for="m in videoFilteredMaterials" :key="m.id" class="resource-item" :class="'r-' + viewMode"
                   draggable="true"
                   @dragstart="onResourceDragStart(m, $event)"
                   @click="onResourceClick(m)"
@@ -130,7 +139,7 @@
                   </div>
                   <span class="resource-name" :title="truncate(m.content, 20)">{{ viewMode === 'grid' ? m.content : truncate(m.content, 10) }}</span>
                 </div>
-                <div v-if="videoMatItems.length === 0" class="resource-empty">无视频素材</div>
+                <div v-if="videoFilteredMaterials.length === 0" class="resource-empty">无视频素材</div>
               </div>
             </template>
             <!-- Image panel -->
@@ -139,8 +148,17 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>上传图片</span>
               </div>
+              <div class="mat-search-row">
+                <input v-model="matSearch" class="resource-search" placeholder="搜索图片..." />
+              </div>
+              <div class="mat-folder-row">
+                <select v-model="matFolderId" class="mat-folder-select" title="按文件夹筛选">
+                  <option value="">全部文件夹</option>
+                  <option v-for="f in matFolders" :key="f.id" :value="f.id">{{ f.name }}</option>
+                </select>
+              </div>
               <div class="resource-grid" :class="viewMode">
-                <div v-for="m in imageMatItems" :key="m.id" class="resource-item" :class="'r-' + viewMode"
+                <div v-for="m in imageFilteredMaterials" :key="m.id" class="resource-item" :class="'r-' + viewMode"
                   draggable="true"
                   @dragstart="onResourceDragStart(m, $event)"
                   @click="onResourceClick(m)"
@@ -150,7 +168,7 @@
                   </div>
                   <span class="resource-name" :title="truncate(m.content, 20)">{{ viewMode === 'grid' ? m.content : truncate(m.content, 10) }}</span>
                 </div>
-                <div v-if="imageMatItems.length === 0" class="resource-empty">无图片素材</div>
+                <div v-if="imageFilteredMaterials.length === 0" class="resource-empty">无图片素材</div>
               </div>
             </template>
             <!-- Audio panel -->
@@ -159,8 +177,17 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span>上传音频</span>
               </div>
+              <div class="mat-search-row">
+                <input v-model="matSearch" class="resource-search" placeholder="搜索音频..." />
+              </div>
+              <div class="mat-folder-row">
+                <select v-model="matFolderId" class="mat-folder-select" title="按文件夹筛选">
+                  <option value="">全部文件夹</option>
+                  <option v-for="f in matFolders" :key="f.id" :value="f.id">{{ f.name }}</option>
+                </select>
+              </div>
               <div class="resource-grid" :class="viewMode">
-                <div v-for="m in audioMatItems" :key="m.id" class="resource-item" :class="'r-' + viewMode"
+                <div v-for="m in audioFilteredMaterials" :key="m.id" class="resource-item" :class="'r-' + viewMode"
                   draggable="true"
                   @dragstart="onResourceDragStart(m, $event)"
                   @click="onResourceClick(m)"
@@ -173,7 +200,7 @@
                   </div>
                   <span class="resource-name" :title="truncate(m.content, 20)">{{ viewMode === 'grid' ? m.content : truncate(m.content, 10) }}</span>
                 </div>
-                <div v-if="audioMatItems.length === 0" class="resource-empty">无音频素材</div>
+                <div v-if="audioFilteredMaterials.length === 0" class="resource-empty">无音频素材</div>
               </div>
             </template>
             <!-- Text panel: 花字 creation -->
@@ -368,6 +395,98 @@
                 </template>
               </div>
             </div>
+            <!-- Multi-Select Properties (Ctrl+click) -->
+            <div v-else-if="isMultiSelect" class="attr-content">
+              <div class="attr-header">多选属性 ({{ multiSelectClips.length }} 个素材)</div>
+              <div class="attr-form">
+                <div class="attr-group">
+                  <div class="attr-group-title">位置</div>
+                  <label class="attr-row">
+                    <span>X</span>
+                    <input :value="hasMixedValues('centerX') ? '' : getMultiValue('centerX')"
+                      :placeholder="hasMixedValues('centerX') ? '混合' : ''"
+                      class="attr-input" type="number"
+                      @input="applyMultiProperty('centerX', Number($event.target.value))" />
+                  </label>
+                  <label class="attr-row">
+                    <span>Y</span>
+                    <input :value="hasMixedValues('centerY') ? '' : getMultiValue('centerY')"
+                      :placeholder="hasMixedValues('centerY') ? '混合' : ''"
+                      class="attr-input" type="number"
+                      @input="applyMultiProperty('centerY', Number($event.target.value))" />
+                  </label>
+                  <label class="attr-row">
+                    <span>缩放</span>
+                    <input :value="hasMixedValues('scale') ? 100 : getMultiValue('scale')"
+                      class="attr-input" type="range" min="10" max="200"
+                      @input="applyMultiProperty('scale', Number($event.target.value))" />
+                    <span class="attr-range-val">{{ hasMixedValues('scale') ? '混合' : getMultiValue('scale') + '%' }}</span>
+                  </label>
+                </div>
+                <div class="attr-group">
+                  <div class="attr-group-title">文字样式</div>
+                  <label class="attr-row">
+                    <span>字体</span>
+                    <select :value="getMultiValue('fontFamily')" class="attr-select"
+                      :class="{ 'mixed-value': hasMixedValues('fontFamily') }"
+                      @change="applyMultiProperty('fontFamily', $event.target.value)">
+                      <option v-for="f in fontFamilies" :key="f.value" :value="f.value">{{ f.label }}</option>
+                    </select>
+                  </label>
+                  <label class="attr-row">
+                    <span>字号</span>
+                    <select :value="getMultiValue('fontSize')" class="attr-select"
+                      :class="{ 'mixed-value': hasMixedValues('fontSize') }"
+                      @change="applyMultiProperty('fontSize', Number($event.target.value))">
+                      <option v-for="fs in fontSizeOptions" :key="fs" :value="fs">{{ fs }}px</option>
+                    </select>
+                  </label>
+                  <label class="attr-row">
+                    <span>颜色</span>
+                    <input :value="getMultiValue('fontColor')" class="attr-color" type="color"
+                      @input="applyMultiProperty('fontColor', $event.target.value)" />
+                    <span class="attr-color-badge" :style="{ background: hasMixedValues('fontColor') ? 'conic-gradient(#ccc,#999,#ccc,#999)' : getMultiValue('fontColor') }"></span>
+                  </label>
+                  <label class="attr-row">
+                    <span></span>
+                    <button class="attr-toggle" :class="{ active: !hasMixedValues('bold') && getMultiValue('bold') }"
+                      @click="applyMultiProperty('bold', !getMultiValue('bold'))" title="加粗"><b>B</b></button>
+                    <button class="attr-toggle" :class="{ active: !hasMixedValues('italic') && getMultiValue('italic') }"
+                      @click="applyMultiProperty('italic', !getMultiValue('italic'))" title="斜体"><i>I</i></button>
+                    <button class="attr-toggle" :class="{ active: !hasMixedValues('shadow') && getMultiValue('shadow') }"
+                      @click="applyMultiProperty('shadow', !getMultiValue('shadow'))" title="阴影">影</button>
+                    <button class="attr-toggle" :class="{ active: !hasMixedValues('outline') && getMultiValue('outline') }"
+                      @click="applyMultiProperty('outline', !getMultiValue('outline'))" title="描边">边</button>
+                  </label>
+                  <label v-if="getMultiValue('outline')" class="attr-row">
+                    <span>描边</span>
+                    <input :value="getMultiValue('outlineColor')" class="attr-color" type="color"
+                      @input="applyMultiProperty('outlineColor', $event.target.value)" />
+                    <span class="attr-color-badge" :style="{ background: hasMixedValues('outlineColor') ? 'conic-gradient(#ccc,#999,#ccc,#999)' : getMultiValue('outlineColor') }"></span>
+                  </label>
+                  <label class="attr-row">
+                    <span>背景</span>
+                    <input :value="getMultiValue('bgColor')" class="attr-color" type="color"
+                      @input="applyMultiProperty('bgColor', $event.target.value)" />
+                    <label class="attr-checkbox-label">
+                      <input type="checkbox" :checked="getMultiValue('bgEnabled')" class="attr-checkbox"
+                        @change="applyMultiProperty('bgEnabled', $event.target.checked)" />
+                      启用
+                    </label>
+                  </label>
+                  <label class="attr-row">
+                    <span>对齐</span>
+                    <select :value="getMultiValue('textAlign')" class="attr-select"
+                      :class="{ 'mixed-value': hasMixedValues('textAlign') }"
+                      @change="applyMultiProperty('textAlign', $event.target.value)">
+                      <option value="left">左对齐</option>
+                      <option value="center">居中</option>
+                      <option value="right">右对齐</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </div>
             <!-- Clip Properties -->
             <div v-else-if="selectedClip" class="attr-content">
               <div class="attr-header">属性</div>
@@ -417,8 +536,9 @@
                   </label>
                   <label class="attr-row">
                     <span>字号</span>
-                    <input v-model.number="selectedClip.fontSize" class="attr-input" type="range" min="20" max="200" />
-                    <span class="attr-range-val">{{ selectedClip.fontSize }}px</span>
+                    <select v-model.number="selectedClip.fontSize" class="attr-select">
+                      <option v-for="fs in fontSizeOptions" :key="fs" :value="fs">{{ fs }}px</option>
+                    </select>
                   </label>
                   <label class="attr-row">
                     <span>颜色</span>
@@ -612,7 +732,7 @@
                 <div class="track-scroll-area" @mousedown="onTimelineSeek($event)">
                   <div v-for="(line, li) in trackLines" :key="li" class="track-row"
                     :class="[trackHeightClass(line.type), line.main ? 'is-main' : '', { 'is-active': selectLine === li }]"
-                    @click="selectLine = li; selectIndex = -1"
+                    @click="clearMultiSelect(); selectLine = li; selectIndex = -1"
                     @dragover.prevent
                     @drop="onTrackRowDrop($event, li)">
                     <!-- Group track: folder cards spanning full height -->
@@ -639,11 +759,11 @@
                     </template>
                     <!-- Non-group track: render individual clips -->
                     <div v-else v-for="(clip, ci) in line.list" :key="clip.id" class="track-clip"
-                      :class="{ 'is-selected': selectLine === li && selectIndex === ci, 'is-dragging': dragClipId === clip.id }"
+                      :class="{ 'is-selected': selectLine === li && selectIndex === ci, 'is-multi-selected': multiSelectClips.some(s => s.li === li && s.ci === ci), 'is-dragging': dragClipId === clip.id }"
                       :style="getClipStyle(clip)"
                       :draggable="hasGroupTracks"
                       @dragstart.stop="onClipDragStart($event, li, ci)"
-                      @click.stop="selectClip(li, ci)"
+                      @click.stop="selectClip(li, ci, $event)"
                       @mousedown.stop="onClipMouseDown($event, li, ci)">
                       <!-- Clip content -->
                       <div class="tc-header" :class="'tc-' + clip.type">
@@ -802,10 +922,27 @@
                 <div class="generate-video-list-header">已生成视频 ({{ generatedVideos.length }})</div>
                 <div class="generate-video-list-body">
                   <div v-for="v in generatedVideos" :key="v.id" class="generate-video-item">
-                    <img v-if="v.thumbnail" :src="v.thumbnail" class="generate-video-thumb" />
+                    <div class="gen-modal-thumb-wrap">
+                      <video v-if="genModalPlayingId === v.id"
+                        :ref="setGenModalVideoRef(v.id)"
+                        :src="$apiUrl(`/api/generated/${v.id}/download`)"
+                        class="gen-modal-video"
+                        @ended="onGenModalVideoEnded(v.id)"
+                        @click.stop></video>
+                      <img v-else-if="v.thumbnail" :src="v.thumbnail" class="generate-video-thumb" />
+                    </div>
                     <div class="generate-video-info">
                       <div class="generate-video-title">{{ v.title || '未命名' }}</div>
                       <div class="generate-video-meta">{{ v.duration?.toFixed(1) }}s · {{ v.frame_width }}×{{ v.frame_height }}</div>
+                    </div>
+                    <div class="gen-modal-actions">
+                      <button class="gen-modal-btn" @click.stop="playGenModalVideo(v)" :title="genModalPlayingId === v.id ? '停止' : '播放'">
+                        <svg v-if="genModalPlayingId !== v.id" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="8 5 19 12 8 19 8 5"/></svg>
+                        <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                      </button>
+                      <button class="gen-modal-btn gen-modal-btn-del" @click.stop="deleteGenModalVideo(v)" title="删除">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
                     </div>
                   </div>
                 </div>

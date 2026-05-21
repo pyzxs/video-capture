@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router'
 import { generatedApi, folderApi, exportApi } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 import { useFolders } from '../../composables/useFolders.js'
+import { usePlaybackGuard } from '../../composables/usePlaybackGuard.js'
 import Pagination from '../../components/Pagination.vue'
 
 export default {
@@ -12,6 +13,7 @@ export default {
     const router = useRouter()
     const toast = useToast()
     const { folders, loadFolders } = useFolders()
+    const { play: playOne, pause: pauseOne } = usePlaybackGuard()
     const folderMap = computed(() => {
       const m = {}
       for (const f of folders.value) m[f.id] = f.name
@@ -220,21 +222,32 @@ export default {
       activeVideos.value = s
       setTimeout(() => {
         const el = videoEls[id]
-        if (el) el.play()
+        if (el) playOne(el)
       }, 100)
     }
     const setVideoRef = (id, el) => { if (el) videoEls[id] = el }
-    const onVideoLoaded = (e) => { e.target.play() }
+    const onVideoLoaded = (e) => { playOne(e.target) }
 
     const hoverPlay = (e) => {
       const v = e.target
-      if (v.readyState >= 2) v.play()
+      if (v.readyState >= 2) playOne(v)
     }
 
     const hoverPause = (e) => {
       const v = e.target
-      v.pause()
+      pauseOne(v)
       v.currentTime = 0
+    }
+
+    const copyScript = async (g) => {
+      const text = g.script || ''
+      if (!text) { toast.warning('该视频无文案内容'); return }
+      try {
+        await navigator.clipboard.writeText(text)
+        toast.success('文案已复制')
+      } catch (e) {
+        toast.error('复制失败')
+      }
     }
 
     onMounted(() => {
@@ -254,6 +267,7 @@ export default {
       exporting, exportSelected, exportItem,
       openManual, openEdit,
       genVideo, dubVideo, deleteGen,
+      copyScript,
       goAuto,
       statusText, formatTime, truncate, formatDuration,
       activeVideos, activateVideo, setVideoRef, onVideoLoaded,

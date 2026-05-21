@@ -31,29 +31,11 @@ HIDDEN_IMPORTS = [
     # fastapi
     "fastapi",
     "fastapi.middleware.cors",
-    # faster-whisper + ctranslate2
-    "faster_whisper",
-    "ctranslate2",
-    # huggingface_hub (faster-whisper 下载模型用)
-    "huggingface_hub",
-    "huggingface_hub.hf_api",
     # sqlalchemy + chromadb
     "sqlalchemy",
     "chromadb",
     "chromadb.db",
     "chromadb.utils.embedding_functions",
-    # 项目内部模块
-    "src",
-    "src.api",
-    "src.api.routes",
-    "src.db",
-    "src.db.models",
-    "src.processing",
-    "src.pipelines",
-    "src.services",
-    "src.download",
-    "src.migrations",
-    "src.http_client",
     # 其他
     "cryptography",
     "cryptography.fernet",
@@ -66,12 +48,12 @@ HIDDEN_IMPORTS = [
     "aiofiles",
 ]
 
+# 递归收集所有子模块（确保 PyInstaller 不遗漏任何项目模块）
+COLLECT_SUBMODULES = ["src"]
+
 # 需要收集整个包的模块（含二进制 .dll/.so）
 COLLECT_PACKAGES = [
     "cryptography",
-    "ctranslate2",
-    "faster_whisper",
-    "huggingface_hub",
     "chromadb",
     "imageio",
     "imageio_ffmpeg",  # moviepy 导入链需要 imageio.plugins.ffmpeg
@@ -130,7 +112,7 @@ def run(cmd, **kwargs):
 def find_upx() -> str | None:
     """查找 UPX 可执行文件路径。"""
     for name in ["upx.exe", "upx"]:
-        local = ROOT / "bin" / name
+        local = ROOT / "scripts" / name
         if local.exists():
             return str(local)
     for name in ["upx.exe", "upx"]:
@@ -212,7 +194,6 @@ def build(use_upx: bool = False, console: bool = False):
         "--onedir",
         "--clean",
         "--noconfirm",
-        "--noupx",
         "--version-file", version_file,
     ]
 
@@ -229,8 +210,10 @@ def build(use_upx: bool = False, console: bool = False):
             pyi_args += ["--upx-dir", str(Path(upx_path).parent)]
             print(f"  UPX: {upx_path} (⚠ 可能增加杀软误报)")
         else:
-            print("  提示: 未找到 UPX，跳过二进制压缩（放到 bin/upx.exe 即可启用）")
+            pyi_args += ["--noupx"]
+            print("  提示: 未找到 UPX，跳过二进制压缩（放到 scripts/upx.exe 即可启用）")
     else:
+        pyi_args += ["--noupx"]
         print("  UPX: 已禁用（推荐，减少杀软误报）")
 
     # 添加隐藏导入
@@ -242,6 +225,11 @@ def build(use_upx: bool = False, console: bool = False):
     for pkg in COLLECT_PACKAGES:
         pyi_args += ["--collect-all", pkg]
     print(f"  收集包: {len(COLLECT_PACKAGES)} 个包")
+
+    # 递归收集项目子模块
+    for pkg in COLLECT_SUBMODULES:
+        pyi_args += ["--collect-submodules", pkg]
+    print(f"  收集子模块: {len(COLLECT_SUBMODULES)} 个包")
 
     # 排除不需要的包
     for pkg in EXCLUDE_PACKAGES:
@@ -266,7 +254,7 @@ def build(use_upx: bool = False, console: bool = False):
         print("1. 检查 main.py 是否存在且语法正确")
         print("2. 尝试添加 --console 查看错误输出")
         print("3. 确保所有依赖都已安装: uv sync")
-        print("4. 尝试单独导入问题模块: python -c 'import faster_whisper'")
+        print("4. 尝试单独导入问题模块: python -c 'import chromadb'")
         sys.exit(1)
 
     clean_artifacts()

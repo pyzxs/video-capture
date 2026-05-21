@@ -51,9 +51,7 @@ def _get_fernet() -> Fernet:
 _DEFAULTS = {
     "llm_model": "deepseek-chat",
     "llm_provider": "deepseek",
-    "asr_model_size": "base",
-    "asr_api_model": "FunAudioLLM/SenseVoiceSmall",
-    "whisper_model_dir": f"{BASE_DIR}/storage/model/whisper",
+    "asr_api_model": "whisper-base",
     "vector_db_path": f"{BASE_DIR}/storage/database/chroma_db",
     "embedding_model": "BAAI/bge-m3",
     "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
@@ -62,8 +60,6 @@ _DEFAULTS = {
     "material_dir": f"{BASE_DIR}/storage/videos/material",
     "mixed_dir": f"{BASE_DIR}/storage/videos/mixed",
     "thumbnail_dir": f"{BASE_DIR}/storage/thumbnails",
-    "image_output_dir": f"{BASE_DIR}/storage/output/images",
-    "video_output_dir": f"{BASE_DIR}/storage/output/videos",
     "paragraph_gap_threshold": 2.0,
     "subtitle_crop_bottom": 0,
     "log_level": "INFO",
@@ -73,17 +69,15 @@ _DEFAULTS = {
     "api_key": "",
 }
 
+# https://video-capture.weigou365.cn
 # ── JSON key → Python type ──
 _TYPE_MAP = {
     "source_dir": Path,
     "material_dir": Path,
     "mixed_dir": Path,
-    "whisper_model_dir": Path,
     "vector_db_path": Path,
     "paragraph_gap_threshold": float,
     "thumbnail_dir": Path,
-    "image_output_dir": Path,
-    "video_output_dir": Path,
     "subtitle_crop_bottom": int,
     "log_dir": Path,
 }

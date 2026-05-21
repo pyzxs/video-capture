@@ -18,9 +18,7 @@ f = Fernet(key)
 data = {
     "llm_model": "deepseek-chat",
     "llm_provider": "deepseek",
-    "asr_model_size": "base",
-    "asr_api_model": "FunAudioLLM/SenseVoiceSmall",
-    "whisper_model_dir": "storage/model/whisper",
+    "asr_api_model": "whisper-tiny",
     "vector_db_path": "storage/database/chroma_db",
     "embedding_model": "BAAI/bge-m3",
     "tts_model": "FunAudioLLM/CosyVoice2-0.5B",
@@ -38,6 +36,7 @@ data = {
     "api_key": "",
 }
 
+# https://video-capture.weigou365.cn
 plain = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
 encrypted = f.encrypt(plain)
 

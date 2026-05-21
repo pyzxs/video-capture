@@ -7,9 +7,16 @@ from datetime import datetime
 from pathlib import Path
 
 import imageio.v3 as iio
-from src.config import API_BASE_URL
+from src.config import API_BASE_URL, BASE_DIR
 
 _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+if getattr(sys, 'frozen', False):
+    _bin_dir = Path(sys.executable).parent / "bin"
+else:
+    _bin_dir = Path(BASE_DIR) / "bin"
+_FFMPEG_EXE = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+_ffmpeg_bin = str(_bin_dir / _FFMPEG_EXE)
 
 _TIMESTAMP_RE = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d+)"
@@ -93,7 +100,7 @@ def generate_thumbnail(video_path: str) -> str:
         return str(thumb_path)
     try:
         subprocess.run([
-            f"{BASE_DIR}/bin/ffmpeg", "-ss", "5", "-i", video_path,
+            _ffmpeg_bin, "-ss", "5", "-i", video_path,
             "-frames:v", "1", "-q:v", "3", "-vf", "scale=320:-1",
             str(thumb_path), "-y",
         ], check=True, capture_output=True, timeout=10, creationflags=_CREATIONFLAGS)

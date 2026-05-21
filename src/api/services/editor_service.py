@@ -9,7 +9,7 @@ from src.api.response import fail_response
 from src.config import OUTPUT_DIR
 from src.db.models import Material
 from src.processing.asr import transcribe
-from src.processing.ffmpeg import ffmpeg_prefix
+from src.processing.ffmpeg import FFMPEG
 
 _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
@@ -42,7 +42,7 @@ def extract_subtitles(req, db: Session) -> dict:
         audio_path = str(temp_dir / f"asr_{material_id}_{src_start:.1f}_{src_end:.1f}.wav")
 
         cmd = [
-            f"{ffmpeg_prefix}ffmpeg", "-y",
+            FFMPEG, "-y",
             "-ss", str(src_start),
             "-t", str(duration),
             "-i", str(material.filepath),
@@ -52,7 +52,7 @@ def extract_subtitles(req, db: Session) -> dict:
         ]
 
         try:
-            subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
+            subprocess.run(cmd, creationflags=_CREATIONFLAGS, check=True, capture_output=True)
         except subprocess.CalledProcessError:
             continue
 

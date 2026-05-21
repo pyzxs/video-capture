@@ -14,8 +14,14 @@ from src.utils import ensure_date_dir, ts_to_seconds
 
 _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
-_ffmpeg_bin = str(Path(BASE_DIR) / "bin" / "ffmpeg")
-_ffprobe_bin = str(Path(BASE_DIR) / "bin" / "ffprobe")
+if getattr(sys, 'frozen', False):
+    _bin_dir = Path(sys.executable).parent / "bin"
+else:
+    _bin_dir = Path(BASE_DIR) / "bin"
+_FFMPEG_NAME = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+_FFPROBE_NAME = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
+_ffmpeg_bin = str(_bin_dir / _FFMPEG_NAME)
+_ffprobe_bin = str(_bin_dir / _FFPROBE_NAME)
 
 
 def parse_srt(path: str | Path) -> list[dict]:
@@ -102,7 +108,7 @@ def _ffmpeg_stream_info(video_path: str) -> list[dict]:
         "-show_streams", "-select_streams", "s",
         str(video_path),
     ]
-    result = subprocess.run(creationflags=_CREATIONFLAGS,cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, creationflags=_CREATIONFLAGS, capture_output=True, text=True)
     data = json.loads(result.stdout)
     return data.get("streams", [])
 
@@ -146,7 +152,7 @@ def extract_soft_subtitles(video_path: str) -> list[dict] | None:
         "-map", f"0:{idx}",
         "-y", sub_path,
     ]
-    subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
+    subprocess.run(cmd, creationflags=_CREATIONFLAGS, check=True, capture_output=True)
 
     segments = parse_subtitles(sub_path, ext)
     return segments if segments else None

@@ -235,6 +235,10 @@
             <input type="checkbox" v-model="downloadExtract" />
             下载后提取文案（语音转文字）
           </label>
+
+          <label v-if="downloadChannel === 'other'">代理地址（选填）
+            <input v-model="downloadProxy" class="dl-proxy" placeholder="http://host:port" />
+          </label>
         </div>
 
         <div v-if="downloadResults.length > 0" class="dl-results">

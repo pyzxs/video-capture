@@ -11,7 +11,7 @@ from src.api.response import fail_response
 from src.api.schemas import MaterialCreate, MaterialOut, MaterialTtsRequest
 from src.config import API_BASE_URL, get_config
 from src.db.models import Material
-from src.processing.ffmpeg import get_video_duration, get_video_metadata
+from src.processing.ffmpeg import get_video_info
 from src.services.tts import synthesize
 from src.utils import ensure_date_dir, get_image_size, generate_thumbnail, thumb_url
 
@@ -128,9 +128,24 @@ def create_material_with_file(
             shutil.copyfileobj(file.file, f)
         filepath = str(dest)
 
+        # 如果选择了"音频"类型但上传的是视频文件，提取音频并转为 MP3
+        if mat_type == "audio" and _detect_type(filename) == "video":
+            from src.processing.ffmpeg import FFMPEG
+            audio_dest = dest.with_suffix(".mp3")
+            _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            subprocess.run(
+                [FFMPEG, "-i", str(dest), "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", str(audio_dest)],
+                check=True, capture_output=True,
+                creationflags=_CREATIONFLAGS,
+            )
+            dest.unlink(missing_ok=True)
+            filepath = str(audio_dest)
+            filename = audio_dest.name
+            ext = ".mp3"
+
         if mat_type == "video":
-            duration = get_video_duration(filepath)
-            meta = get_video_metadata(filepath)
+            meta = get_video_info(filepath)
+            duration = meta["duration"]
             start_time = start_time or 0.0
             end_time = end_time or duration
             if not frame_width:
@@ -295,7 +310,7 @@ def create_material_from_segment(
     end_frame: float = 0,
 ) -> dict:
     import subprocess
-    from src.processing.ffmpeg import ffmpeg_prefix as ff
+    from src.processing.ffmpeg import FFMPEG
 
     source = db.query(Material).get(source_id)
     if not source or not source.filepath or not Path(source.filepath).exists():
@@ -313,7 +328,7 @@ def create_material_from_segment(
     out_path = str(Path(out_dir) / out_name)
 
     cmd = [
-        f"{ff}ffmpeg", "-y",
+        FFMPEG, "-y",
         "-ss", f"{start_sec:.3f}",
         "-i", str(source.filepath),
         "-t", f"{dur_sec:.3f}",
@@ -324,7 +339,7 @@ def create_material_from_segment(
         out_path,
     ]
     try:
-        subprocess.run(creationflags=_CREATIONFLAGS,cmd, check=True, capture_output=True)
+        subprocess.run(cmd, creationflags=_CREATIONFLAGS, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         raise fail_response(status_code=500, message=f"裁剪失败: {e.stderr[-200:] if e.stderr else ''}")
 

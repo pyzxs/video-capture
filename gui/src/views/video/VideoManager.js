@@ -2,6 +2,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { videoApi, materialApi, folderApi, downloadApi, agentApi, exportApi } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 import { useFolders } from '../../composables/useFolders.js'
+import { usePlaybackGuard } from '../../composables/usePlaybackGuard.js'
 import Pagination from '../../components/Pagination.vue'
 
 export default {
@@ -10,6 +11,7 @@ export default {
   setup() {
     const toast = useToast()
     const { folders, selectedFolderId, loadFolders } = useFolders()
+    const { play: playOne, pause: pauseOne } = usePlaybackGuard()
     const folderMap = computed(() => {
       const m = {}
       for (const f of folders.value) m[f.id] = f.name
@@ -101,7 +103,7 @@ export default {
     const splitSteps = ref([
       { label: '分析视频软字幕', desc: '检测并提取视频内嵌的 SRT/ASS 字幕流', status: 'pending' },
       { label: '提取视频音频', desc: '通过 ffmpeg 提取 16kHz 单声道 WAV 音频', status: 'pending' },
-      { label: '提取音频到文字', desc: '使用 Whisper 本地模型进行语音识别', status: 'pending' },
+      { label: '提取音频到文字', desc: '使用 Whisper API 模型进行语音识别,速度较慢，耐心等待', status: 'pending' },
       { label: '分析语义到自然段落', desc: '通过 LLM 分析语义完整性，合并为自然段落', status: 'pending' },
       { label: '按自然段落分割', desc: '根据段落时间戳切割视频画面片段', status: 'pending' },
       { label: '去除视频音频', desc: '移除分割后片段的原始音频轨道', status: 'pending' },
@@ -272,13 +274,16 @@ export default {
     const downloadChannel = ref('douyin')
     const downloadUrls = ref('')
     const downloadProxy = ref('')
-    const downloadExtract = ref(true)
+    const downloadExtract = ref(false)
     const downloading = ref(false)
     const downloadResults = ref([])
+    const downloadProgress = ref({ stage: '', progress: 0, message: '' })
     const channels = [
       { key: 'douyin', label: '抖音' },
       { key: 'bilibili', label: 'B站' },
       { key: 'kuaishou', label: '快手' },
+      { key: 'xiaohongshu', label: '小红书' },
+      { key: 'other', label: '其它' },
     ]
 
     const loadVideos = async () => {
@@ -418,7 +423,7 @@ export default {
       downloadChannel.value = 'douyin'
       downloadUrls.value = ''
       downloadProxy.value = ''
-      downloadExtract.value = true
+      downloadExtract.value = false
       downloading.value = false
       downloadResults.value = []
       showDownload.value = true
@@ -433,37 +438,35 @@ export default {
       if (!downloadUrls.value.trim()) return
       downloading.value = true
       downloadResults.value = []
-      try {
-        const res = await downloadApi.fromUrl({
+      downloadProgress.value = { stage: '', progress: 0, message: '' }
+
+      await downloadApi.fromUrlStream(
+        {
           channel: downloadChannel.value,
           urls: downloadUrls.value,
           proxy: downloadProxy.value,
           extract_text: downloadExtract.value,
           folder_id: selectedFolderId.value || undefined,
-        })
-        const data = res.data
-        const raw = data?.data
-        const items = Array.isArray(raw) ? raw : (raw ? [{ ...raw, status: 'completed' }] : [])
-        downloadResults.value = items
-        loadVideos()
-
-        const completed = items.filter(r => r.status === 'completed').length
-        const failed = items.filter(r => r.status === 'failed').length
-        if (completed > 0 && failed === 0) {
+        },
+        (event) => {
+          downloadProgress.value = { stage: event.stage, progress: event.progress, message: event.message }
+        },
+        (event) => {
+          downloading.value = false
+          downloadProgress.value = { stage: '', progress: 100, message: '' }
+          downloadResults.value = [{ ...event.data, status: 'completed' }]
+          loadVideos()
           showDownload.value = false
-          toast.success(data?.message || `全部下载成功，共 ${completed} 个`)
-        } else if (failed > 0 && completed === 0) {
-          toast.error(data?.message || `全部失败，共 ${failed} 个`)
-        } else {
-          toast.warning(`${completed} 个成功，${failed} 个失败`)
-        }
-      } catch (e) {
-        const msg = e.response?.data?.message || e.response?.data?.detail || e.message
-        downloadResults.value = [{ url: '', status: 'failed', error: msg }]
-        toast.error(msg)
-      } finally {
-        downloading.value = false
-      }
+          toast.success('视频下载成功')
+        },
+        (err) => {
+          downloading.value = false
+          downloadProgress.value = { stage: '', progress: 0, message: '' }
+          const msg = err?.message || '下载失败'
+          downloadResults.value = [{ url: '', status: 'failed', error: msg }]
+          toast.error(msg)
+        },
+      )
     }
 
     // ── Actions ──
@@ -862,20 +865,20 @@ export default {
       activeVideos.value = s
       setTimeout(() => {
         const el = videoEls[id]
-        if (el) el.play()
+        if (el) playOne(el)
       }, 100)
     }
     const setVideoRef = (id, el) => { if (el) videoEls[id] = el }
-    const onVideoLoaded = (e) => { e.target.play() }
+    const onVideoLoaded = (e) => { playOne(e.target) }
 
     const hoverPlay = (e) => {
       const v = e.target
-      if (v.readyState >= 2) v.play()
+      if (v.readyState >= 2) playOne(v)
     }
 
     const hoverPause = (e) => {
       const v = e.target
-      v.pause()
+      pauseOne(v)
       v.currentTime = 0
     }
 
@@ -932,7 +935,7 @@ export default {
       showMoveDialog, showMoveFolder, closeMoveDialog, moveToFolder, showBatchMoveFolder, batchDeleteVideos,
       showDialog, selectedFile, dragging, uploading, processing, uploadProgress, uploadLang, uploadExtract, fileInput,
       openUpload, closeDialog, clearFile, onFileSelect, onDrop, startUpload,
-      showDownload, downloadChannel, downloadUrls, downloadProxy, downloadExtract, downloading, downloadResults, channels,
+      showDownload, downloadChannel, downloadUrls, downloadProxy, downloadExtract, downloading, downloadResults, downloadProgress, channels,
       openDownload, closeDownload, startDownload,
       showEdit, showEditPreview, editForm, editingVideo, saving, mdTextarea,
       openEdit, closeEdit, saveEdit, saveToNote, savingToNote, startDub, dubbing, mdInsert, mdLink, renderMarkdown,

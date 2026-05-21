@@ -7,8 +7,8 @@ from src.db.engine import init_db
 from src.db.models import Setting
 
 _VALID_KEYS = {
-    "llm_model", "llm_provider", "asr_model_size", "asr_api_model",
-    "whisper_model_dir", "vector_db_path", "embedding_model",
+    "llm_model", "llm_provider", "asr_api_model",
+    "vector_db_path", "embedding_model",
     "tts_model", "tts_voice", "source_dir", "material_dir", "mixed_dir",
     "thumbnail_dir", "paragraph_gap_threshold", "subtitle_crop_bottom",
     "log_level", "log_dir", "cms_base_url", "user_id", "api_key",
