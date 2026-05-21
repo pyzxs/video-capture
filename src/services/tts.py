@@ -11,8 +11,12 @@ from src.logger import default_logger as logger
 
 _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
+if getattr(sys, 'frozen', False):
+    _bin_dir = Path(sys.executable).parent / "bin"
+else:
+    _bin_dir = Path(BASE_DIR) / "bin"
 _FFMPEG_NAME = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-ffmpeg_bin = str(Path(BASE_DIR) / "bin" / _FFMPEG_NAME)
+ffmpeg_bin = str(_bin_dir / _FFMPEG_NAME)
 
 _SPLIT_RE = re.compile(r"(?<=[。！？\n])")
 _CHUNK_MAX = 200
