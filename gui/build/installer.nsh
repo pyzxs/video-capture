@@ -84,6 +84,41 @@ Function StrRemove
     Exch $R0
 FunctionEnd
 
+; 卸载器版本（NSIS 要求卸载段中函数名必须以 un. 开头）
+Function un.StrRemove
+    Exch $R0
+    Exch
+    Exch $R1
+    Push $R2
+    Push $R3
+    Push $R4
+    Push $R5
+
+    StrLen $R3 $R0
+    StrLen $R4 $R1
+    StrCpy $R2 ""
+    StrCpy $R5 0
+
+    ${While} $R5 < $R4
+        StrCpy $R6 $R1 $R3 $R5
+        ${If} $R6 == $R0
+            IntOp $R5 $R5 + $R3
+        ${Else}
+            StrCpy $R7 $R1 1 $R5
+            StrCpy $R2 "$R2$R7"
+            IntOp $R5 $R5 + 1
+        ${EndIf}
+    ${EndWhile}
+
+    StrCpy $R0 $R2
+    Pop $R5
+    Pop $R4
+    Pop $R3
+    Pop $R2
+    Pop $R1
+    Exch $R0
+FunctionEnd
+
 !macro customInstall
     ; PATH 环境变量 — 直接注册表写入，不依赖外部脚本
     ${NSD_GetState} $CheckBox_AddToPath $1
@@ -125,16 +160,16 @@ FunctionEnd
     ${If} $0 != ""
         Push "$0"
         Push ";$INSTDIR\backend\bin"
-        Call StrRemove
+        Call un.StrRemove
         Pop $1
         Push "$1"
         Push "$INSTDIR\backend\bin;"
-        Call StrRemove
+        Call un.StrRemove
         Pop $2
         ; 去掉首尾多余分号
         Push "$2"
         Push ";;"
-        Call StrRemove
+        Call un.StrRemove
         Pop $3
         ${If} $3 == ""
             DeleteRegValue HKCU "Environment" "PATH"
