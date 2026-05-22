@@ -6,6 +6,7 @@ from src.api.deps import get_db
 from src.api.response import response_success
 from src.api.schemas import (
     SmartAnalyzeRequest,
+    SmartSplitStreamRequest,
     SplitCutRequest,
     VideoDownloadRequest,
     VideoDubRequest,
@@ -23,7 +24,7 @@ from src.api.services.video_service import (
     save_video_to_notes,
     smart_split_analyze,
     smart_split_extract_audio,
-    smart_split_subtitles,
+    smart_split_stream,
     split_analyze,
     split_cut,
     split_video_full,
@@ -108,22 +109,26 @@ def _split_analyze(video_id: int, language: str = "zh", db: Session = Depends(ge
     return response_success(data=result.model_dump(mode="json"), message="分析完成")
 
 
-@router.post("/{video_id}/split/smart/subtitles", description="智能分割 - 步骤1: 分析视频软字幕")
-def _smart_split_subtitles(video_id: int, db: Session = Depends(get_db)):
-    result = smart_split_subtitles(db, video_id)
-    return response_success(**result)
 
-
-@router.post("/{video_id}/split/smart/extract-audio", description="智能分割 - 步骤2: 提取视频音频")
+@router.post("/{video_id}/split/smart/extract-audio", description="智能分割 - 步骤1: 提取视频音频")
 def _smart_split_extract_audio(video_id: int, db: Session = Depends(get_db)):
     result = smart_split_extract_audio(db, video_id)
     return response_success(**result)
 
 
-@router.post("/{video_id}/split/smart/analyze", description="智能分割 - 步骤3+4: 语音识别与语义段落分析")
+@router.post("/{video_id}/split/smart/analyze", description="智能分割 - 步骤2+3: 语音识别与语义段落分析")
 def _smart_split_analyze(video_id: int, data: SmartAnalyzeRequest, db: Session = Depends(get_db)):
-    result = smart_split_analyze(db, video_id, data.audio_path, data.language, data.subtitles)
+    result = smart_split_analyze(db, video_id, data.audio_path, data.language)
     return response_success(**result)
+
+
+@router.post("/{video_id}/split/smart/stream", description="智能分割 - 一站式 SSE 流式处理")
+async def _smart_split_stream(video_id: int, data: SmartSplitStreamRequest, db: Session = Depends(get_db)):
+    return StreamingResponse(
+        smart_split_stream(db, video_id, data.language, data.extract_text, data.remove_audio),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/{video_id}/split/cut", description="分割视频 - 步骤2: 切割片段（仅保留画面，去除声音）")

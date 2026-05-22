@@ -69,6 +69,7 @@
                     @mouseenter="hoverPlay($event)"
                     @mouseleave="hoverPause($event)"
                     @loadeddata="onVideoLoaded($event)"
+                    @play="onVideoPlay($event)"
                   ></video>
                 </template>
                 <div v-else class="thumbnail-wrap" @click="activateVideo(g.id)">

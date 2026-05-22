@@ -3,13 +3,13 @@
     <!-- ===== HEADER ===== -->
     <header class="auto-header">
       <div class="header-left">
-        <button class="header-back-btn" @click="goBack" title="返回">
+        <button class="header-back-btn" @click="goBack" title="返回" :disabled="autoProcessing">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         </button>
         <span class="header-brand">智能混剪</span>
       </div>
       <div class="header-right">
-        <button class="btn-search" @click="searchMaterials" :disabled="!autoForm.description || searching">
+        <button class="btn-search" @click="searchMaterials" :disabled="!autoForm.description || searching || autoProcessing">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           {{ searching ? '检索中...' : '检索素材' }}
         </button>
@@ -31,18 +31,18 @@
             <span class="expand-toggle-track">
               <span class="expand-toggle-thumb"></span>
             </span>
-            <input type="checkbox" :checked="!autoForm.skipExpand" @change="autoForm.skipExpand = !$event.target.checked" class="expand-toggle-input" />
+            <input type="checkbox" :checked="!autoForm.skipExpand" @change="autoForm.skipExpand = !$event.target.checked" class="expand-toggle-input" :disabled="autoProcessing" />
           </label>
         </div>
 
         <div class="toolbar-group">
           <label class="toolbar-label">生成批次</label>
-          <input type="number" v-model.number="autoForm.batchCount" class="toolbar-input" min="1" @change="autoForm.batchCount = Math.max(1, Math.min(50, autoForm.batchCount || 1))" />
+          <input type="number" v-model.number="autoForm.batchCount" class="toolbar-input" min="1" :disabled="autoProcessing" @change="autoForm.batchCount = Math.max(1, Math.min(50, autoForm.batchCount || 1))" />
         </div>
 
         <div class="toolbar-group">
           <label class="toolbar-label">画面比率</label>
-          <select v-model="autoForm.ratioIdx" class="toolbar-select">
+          <select v-model="autoForm.ratioIdx" class="toolbar-select" :disabled="autoProcessing">
             <option value="">默认</option>
             <option value="0">1920×1080 (16:9)</option>
             <option value="1">1280×720 (16:9)</option>
@@ -61,7 +61,7 @@
 
         <div class="toolbar-group">
           <label class="toolbar-label">默认音色</label>
-          <select v-model="autoForm.voice" class="toolbar-select">
+          <select v-model="autoForm.voice" class="toolbar-select" :disabled="autoProcessing">
             <option value="">系统默认</option>
             <option value="FunAudioLLM/CosyVoice2-0.5B:alex">亚力克斯</option>
             <option value="FunAudioLLM/CosyVoice2-0.5B:anna">安娜</option>
@@ -78,14 +78,14 @@
         <div class="toolbar-group">
           <label class="toolbar-label">背景音频</label>
           <div class="toolbar-audio-row">
-            <select v-model="autoForm.audioMaterialId" class="toolbar-select toolbar-audio-select" @focus="loadAudioMaterials">
+            <select v-model="autoForm.audioMaterialId" class="toolbar-select toolbar-audio-select" :disabled="autoProcessing" @focus="loadAudioMaterials">
               <option value="">无</option>
               <option v-for="m in audioMaterials" :key="m.id" :value="m.id">{{ m.filename || '音频 ' + m.id }}</option>
             </select>
             <button
               class="toolbar-audio-play-btn"
               :class="{ playing: playingAudioId === autoForm.audioMaterialId }"
-              :disabled="!autoForm.audioMaterialId"
+              :disabled="!autoForm.audioMaterialId || autoProcessing"
               @click="toggleAudioPreview(autoForm.audioMaterialId)"
               :title="playingAudioId === autoForm.audioMaterialId ? '停止' : '试听'"
             >
@@ -99,7 +99,7 @@
 
         <div class="toolbar-divider"></div>
 
-        <button class="toolbar-ai-btn" :class="{ active: showChat }" @click="toggleChat" :title="showChat ? '关闭 AI 助手' : 'AI 辅助生成脚本'">
+        <button class="toolbar-ai-btn" :class="{ active: showChat }" @click="toggleChat" :disabled="autoProcessing" :title="showChat ? '关闭 AI 助手' : 'AI 辅助生成脚本'">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -122,17 +122,17 @@
           <div class="auto-card-body">
             <div class="md-editor">
               <div class="md-toolbar">
-                <button type="button" class="md-btn" @click="mdInsert('**', '**')" title="粗体"><strong>B</strong></button>
-                <button type="button" class="md-btn" @click="mdInsert('*', '*')" title="斜体"><em>I</em></button>
-                <button type="button" class="md-btn" @click="mdInsert('## ', '')" title="标题">H</button>
-                <button type="button" class="md-btn" @click="mdInsert('- ', '')" title="列表">•</button>
-                <button type="button" class="md-btn" @click="mdLink" title="链接">🔗</button>
+                <button type="button" class="md-btn" @click="mdInsert('**', '**')" title="粗体" :disabled="autoProcessing"><strong>B</strong></button>
+                <button type="button" class="md-btn" @click="mdInsert('*', '*')" title="斜体" :disabled="autoProcessing"><em>I</em></button>
+                <button type="button" class="md-btn" @click="mdInsert('## ', '')" title="标题" :disabled="autoProcessing">H</button>
+                <button type="button" class="md-btn" @click="mdInsert('- ', '')" title="列表" :disabled="autoProcessing">•</button>
+                <button type="button" class="md-btn" @click="mdLink" title="链接" :disabled="autoProcessing">🔗</button>
                 <span class="md-sep"></span>
-                <button type="button" class="md-btn" :class="{ active: showDescPreview }" @click="showDescPreview = !showDescPreview">
+                <button type="button" class="md-btn" :class="{ active: showDescPreview }" @click="showDescPreview = !showDescPreview" :disabled="autoProcessing">
                   {{ showDescPreview ? '编辑' : '预览' }}
                 </button>
               </div>
-              <textarea v-if="!showDescPreview" ref="mdTextarea" v-model="autoForm.description" rows="8" class="md-textarea" placeholder="描述你想生成的视频内容，如：春日公园里孩子们在放风筝..."></textarea>
+              <textarea v-if="!showDescPreview" ref="mdTextarea" v-model="autoForm.description" rows="8" class="md-textarea" placeholder="描述你想生成的视频内容，如：春日公园里孩子们在放风筝..." :disabled="autoProcessing"></textarea>
               <div v-else class="md-preview" v-html="renderMarkdown(autoForm.description)"></div>
             </div>
           </div>
@@ -161,9 +161,9 @@
                     <td class="scol-content" :title="m.content">{{ truncate(m.content, 60) }}</td>
                     <td class="scol-time">{{ m.start_time?.toFixed(1) }}s - {{ m.end_time?.toFixed(1) }}s</td>
                     <td class="scol-actions">
-                      <button class="mat-action-btn" @click="moveSearchMaterial(idx, -1)" :disabled="idx === 0" title="上移">↑</button>
-                      <button class="mat-action-btn" @click="moveSearchMaterial(idx, 1)" :disabled="idx === searchResults.materials.length - 1" title="下移">↓</button>
-                      <button class="mat-action-btn mat-action-del" @click="removeSearchMaterial(idx)" title="删除">✕</button>
+                      <button class="mat-action-btn" @click="moveSearchMaterial(idx, -1)" :disabled="idx === 0 || autoProcessing" title="上移">↑</button>
+                      <button class="mat-action-btn" @click="moveSearchMaterial(idx, 1)" :disabled="idx === searchResults.materials.length - 1 || autoProcessing" title="下移">↓</button>
+                      <button class="mat-action-btn mat-action-del" @click="removeSearchMaterial(idx)" :disabled="autoProcessing" title="删除">✕</button>
                     </td>
                   </tr>
                 </tbody>
@@ -267,11 +267,11 @@
             placeholder="输入消息..."
             rows="2"
             class="chat-input-area"
-            :disabled="!selectedAgentId"
+            :disabled="!selectedAgentId || autoProcessing"
           ></textarea>
           <div class="chat-actions">
-            <button class="chat-send-btn" @click="sendChat" :disabled="!chatInput.trim() || chatLoading || !selectedAgentId">发送</button>
-            <button class="chat-clear-btn" @click="clearChat">清空</button>
+            <button class="chat-send-btn" @click="sendChat" :disabled="!chatInput.trim() || chatLoading || !selectedAgentId || autoProcessing">发送</button>
+            <button class="chat-clear-btn" @click="clearChat" :disabled="autoProcessing">清空</button>
           </div>
         </div>
       </div>

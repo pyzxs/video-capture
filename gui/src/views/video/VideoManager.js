@@ -101,10 +101,9 @@ export default {
     const splitDoingText = ref('')
     const splitState = ref('') // '' | 'done'
     const splitSteps = ref([
-      { label: '分析视频软字幕', desc: '检测并提取视频内嵌的 SRT/ASS 字幕流', status: 'pending' },
       { label: '提取视频音频', desc: '通过 ffmpeg 提取 16kHz 单声道 WAV 音频', status: 'pending' },
       { label: '提取音频到文字', desc: '使用 Whisper API 模型进行语音识别,速度较慢，耐心等待', status: 'pending' },
-      { label: '分析语义到自然段落', desc: '通过 LLM 分析语义完整性，合并为自然段落', status: 'pending' },
+      { label: '分析语义到自然段落', desc: '通过时间间隔或 LLM 分析语义完整性，合并为自然段落', status: 'pending' },
       { label: '按自然段落分割', desc: '根据段落时间戳切割视频画面片段', status: 'pending' },
       { label: '去除视频音频', desc: '移除分割后片段的原始音频轨道', status: 'pending' },
       { label: '生成素材列表', desc: '创建素材数据库记录并建立向量索引', status: 'pending' },
@@ -112,9 +111,7 @@ export default {
     const splitMaterials = ref([])
     const splitVideoRef = ref(null)
     const splitError = ref('')
-    let splitSubtitles = null       // Step 1: soft subtitles
-    let splitAudioPath = null       // Step 2: extracted audio path
-    let splitParagraphs = null      // Steps 3+4: merged paragraphs
+    let splitStreamAbort = null     // SSE stream abort controller
 
     // Manual split
     const splitMode = ref('auto')
@@ -482,9 +479,7 @@ export default {
       splitState.value = ''
       splitMaterials.value = []
       splitError.value = ''
-      splitParagraphs = null
-      splitSubtitles = null
-      splitAudioPath = null
+      if (splitStreamAbort) { splitStreamAbort(); splitStreamAbort = null }
       splitSteps.value.forEach(s => (s.status = 'pending'))
       splitMode.value = 'auto'
       splitCurrentTime.value = 0
@@ -493,121 +488,76 @@ export default {
       showSplit.value = true
     }
 
-    const startSplitAnalysis = async () => {
+    // SSE 流式智能分割：stage → step 索引映射
+    const STAGE_TO_STEP = { audio_extract: 0, asr: 1, paragraph_merge: 2, cut: 3 }
+
+    const startSplitAnalysis = () => {
       const v = splitVideoRef.value
       if (!v) return
       splitStarted.value = true
       splitState.value = ''
       splitMaterials.value = []
       splitError.value = ''
-      splitSubtitles = null
-      splitAudioPath = null
-      splitParagraphs = null
       splitSteps.value.forEach(s => (s.status = 'pending'))
-
-      // ── Step 1: 分析视频软字幕 ──
-      setStep(0, 'doing')
       splitDoing.value = true
-      splitDoingText.value = '正在提取视频内嵌软字幕...'
-      try {
-        const res = await videoApi.smartSubtitles(v.id)
-        const d = res.data.data || res.data
-        splitSubtitles = d.subtitles || null
-        setStep(0, 'done')
-      } catch (e) {
-        setStep(0, 'error')
-        splitError.value = '提取软字幕失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message)
-        splitDoing.value = false
-        return
-      }
 
-      // ── Step 2: 提取视频音频 ──
-      setStep(1, 'doing')
-      splitDoingText.value = '正在从视频中提取音频轨道...'
-      try {
-        const res = await videoApi.smartExtractAudio(v.id)
-        const d = res.data.data || res.data
-        splitAudioPath = d.audio_path
-        setStep(1, 'done')
-      } catch (e) {
-        setStep(1, 'error')
-        splitError.value = '提取音频失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message)
-        splitDoing.value = false
-        return
-      }
+      const streamPromise = videoApi.smartSplitStream(v.id, {
+        language: 'zh',
+        extract_text: splitExtractText.value,
+        remove_audio: splitRemoveAudio.value,
+      },
+      // onProgress
+      (event) => {
+        splitDoingText.value = event.message
+        const stepIdx = STAGE_TO_STEP[event.stage]
+        if (stepIdx === undefined) return
 
-      // ── Steps 3+4: 语音识别 + 语义段落分析 ──
-      setStep(2, 'doing')
-      setStep(3, 'doing')
-      splitDoingText.value = '正在进行语音识别并分析语义段落...'
-      try {
-        const res = await videoApi.smartAnalyze(v.id, {
-          subtitles: splitSubtitles,
-          audio_path: splitAudioPath,
-          language: 'zh',
-        })
-        const d = res.data.data || res.data
-        splitParagraphs = d.paragraphs || []
-        setStep(2, 'done')
-        setStep(3, 'done')
-      } catch (e) {
-        setStep(2, 'error')
-        setStep(3, 'error')
-        splitError.value = '语音识别或段落分析失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message)
-        splitDoing.value = false
-        return
-      }
-
-      if (!splitParagraphs || splitParagraphs.length === 0) {
-        splitError.value = '未能识别出任何有效段落'
-        splitDoing.value = false
-        return
-      }
-
-      // ── Steps 5+6+7: 切割 + 去音频 + 生成素材 ──
-      setStep(4, 'doing')
-      setStep(5, 'doing')
-      setStep(6, 'doing')
-      splitDoingText.value = `正在切割 ${splitParagraphs.length} 个视频片段并生成素材...`
-      let materialIds = []
-      try {
-        const res = await videoApi.splitCut(v.id, {
-          paragraphs: splitParagraphs,
-          extract_text: splitExtractText.value,
-          remove_audio: splitRemoveAudio.value,
-        })
-        const d = res.data.data || res.data
-        materialIds = d.material_ids || []
-        setStep(4, 'done')
-        setStep(5, 'done')
-        setStep(6, 'done')
+        if (event.progress === 0) {
+          setStep(stepIdx, 'doing')
+          if (event.stage === 'cut') { setStep(4, 'doing'); setStep(5, 'doing') }
+        } else if (event.progress === 100) {
+          const skipped = event.message.includes('跳过') || event.message.includes('预存')
+          setStep(stepIdx, skipped ? 'skipped' : 'done')
+          if (event.stage === 'cut') {
+            setStep(4, skipped ? 'skipped' : 'done')
+            setStep(5, skipped ? 'skipped' : 'done')
+          }
+        }
+      },
+      // onComplete
+      async (event) => {
+        splitStreamAbort = null
         splitState.value = 'done'
-      } catch (e) {
-        setStep(4, 'error')
-        setStep(5, 'error')
-        setStep(6, 'error')
-        splitError.value = '切割失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message)
+        const materialIds = event.data?.material_ids || []
+        if (materialIds.length > 0) {
+          splitDoingText.value = '正在获取素材详情...'
+          const items = await Promise.all(
+            materialIds.map(id => materialApi.get(id).then(r => r.data).catch(() => null))
+          )
+          splitMaterials.value = items.filter(Boolean)
+          loadVideos()
+        }
         splitDoing.value = false
-        return
-      }
-
-      // ── Fetch material details for display ──
-      splitDoingText.value = '正在获取素材详情...'
-      try {
-        const items = await Promise.all(
-          materialIds.map(id => materialApi.get(id).then(r => r.data).catch(() => null))
-        )
-        splitMaterials.value = items.filter(Boolean)
-        loadVideos()
-      } catch (e) {
-        splitError.value = '获取素材详情失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message)
-      } finally {
+      },
+      // onError
+      (err) => {
+        splitStreamAbort = null
+        for (let i = 0; i < splitSteps.value.length; i++) {
+          if (splitSteps.value[i].status === 'doing') {
+            setStep(i, 'error')
+            break
+          }
+        }
+        splitError.value = err.message || '智能分割失败'
         splitDoing.value = false
-      }
+      })
+      splitStreamAbort = () => streamPromise.abort()
     }
 
     const closeSplit = () => {
-      if (splitDoing.value) return
+      if (splitDoing.value) {
+        if (splitStreamAbort) { splitStreamAbort(); splitStreamAbort = null }
+      }
       showSplit.value = false
       splitStarted.value = false
       splitMaterials.value = []
@@ -881,6 +831,9 @@ export default {
       pauseOne(v)
       v.currentTime = 0
     }
+    const onVideoPlay = (e) => {
+      playOne(e.target)
+    }
 
     const deleteVideo = async (v) => {
       if (!await toast.confirm(`确定删除视频「${v.filename}」？`)) return
@@ -940,7 +893,7 @@ export default {
       showEdit, showEditPreview, editForm, editingVideo, saving, mdTextarea,
       openEdit, closeEdit, saveEdit, saveToNote, savingToNote, startDub, dubbing, mdInsert, mdLink, renderMarkdown,
       copyContent, deleteVideo,
-      activeVideos, activateVideo, setVideoRef, onVideoLoaded,
+      activeVideos, activateVideo, setVideoRef, onVideoLoaded, onVideoPlay,
       hoverPlay, hoverPause,
       showSplit, splitStarted, splitState, splitSteps, splitDoing, splitDoingText, splitError,
       splitMaterials, splitVideoRef, openSplit, startSplitAnalysis, closeSplit, deleteSplitMaterial,

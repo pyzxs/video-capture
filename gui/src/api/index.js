@@ -12,55 +12,60 @@ const api = axios.create({
 
 export default api
 
-// SSE streaming helper
-async function _sseStream(url, body, onProgress, onComplete, onError) {
+// SSE streaming helper — returns a promise with .abort() attached
+function _sseStream(url, body, onProgress, onComplete, onError) {
   const controller = new AbortController()
-  try {
-    const resp = await fetch(BACKEND_URL + url, {
-      method: 'POST',
-      headers: body ? { 'Content-Type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    })
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '')
-      onError(new Error(errText || `HTTP ${resp.status}`))
-      return { abort: () => {} }
-    }
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event = JSON.parse(line.slice(6))
-            if (event.type === 'progress') {
-              onProgress(event)
-            } else if (event.type === 'complete') {
-              onComplete(event)
-              return { abort: () => {} }
-            } else if (event.type === 'error') {
-              onError(new Error(event.message || '未知错误'))
-              return { abort: () => {} }
+
+  const promise = (async () => {
+    try {
+      const resp = await fetch(BACKEND_URL + url, {
+        method: 'POST',
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      })
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '')
+        onError(new Error(errText || `HTTP ${resp.status}`))
+        return
+      }
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6))
+              if (event.type === 'progress') {
+                onProgress(event)
+              } else if (event.type === 'complete') {
+                onComplete(event)
+                return
+              } else if (event.type === 'error') {
+                onError(new Error(event.message || '未知错误'))
+                return
+              }
+            } catch (e) {
+              // skip parse errors
             }
-          } catch (e) {
-            // skip parse errors
           }
         }
       }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        onError(e)
+      }
     }
-  } catch (e) {
-    if (e.name !== 'AbortError') {
-      onError(e)
-    }
-  }
-  return { abort: () => controller.abort() }
+  })()
+
+  promise.abort = () => controller.abort()
+  return promise
 }
 
 // ── Videos ──
@@ -84,9 +89,10 @@ export const videoApi = {
   split: (id, language) => api.post(`/videos/${id}/split`, null, { params: { language } }),
   splitAnalyze: (id, language) => api.post(`/videos/${id}/split/analyze`, null, { params: { language } }),
   splitCut: (id, data) => api.post(`/videos/${id}/split/cut`, data, { timeout: 600000 }),
-  smartSubtitles: (id) => api.post(`/videos/${id}/split/smart/subtitles`, null, { timeout: 600000 }),
   smartExtractAudio: (id) => api.post(`/videos/${id}/split/smart/extract-audio`, null, { timeout: 600000 }),
   smartAnalyze: (id, data) => api.post(`/videos/${id}/split/smart/analyze`, data, { timeout: 600000 }),
+  smartSplitStream: (id, data, onProgress, onComplete, onError) =>
+    _sseStream(`/api/videos/${id}/split/smart/stream`, data, onProgress, onComplete, onError),
   saveToNote: (id) => api.post(`/videos/${id}/save-to-notes`),
   rewriteChat: (id, data) => api.post(`/videos/${id}/rewrite-chat`, data, { timeout: 120000 }),
   dub: (id, data) => api.post(`/videos/${id}/dub`, data, { timeout: 600000 }),

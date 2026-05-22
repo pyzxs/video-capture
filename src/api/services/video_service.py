@@ -13,7 +13,6 @@ from src.api.response import fail_response
 from src.api.schemas import (
     ParagraphItem,
     SmartExtractAudioOut,
-    SmartSubtitlesOut,
     SplitAnalyzeOut,
     SplitCutOut,
     VideoDownloadRequest,
@@ -75,6 +74,14 @@ def update_video(db: Session, video_id: int, filename: str | None, content: str 
         v.content = content
     db.commit()
     db.refresh(v)
+
+    # 若 content > 200 字且尚未有 ASR 结果，加入后台队列
+    if v.content and len(v.content) > 200 and not v.asr_segments:
+        v.asr_status = "pending"
+        db.commit()
+        from src.services.asr_queue import enqueue_asr
+        enqueue_asr(v.id)
+
     return _video_to_dict(v)
 
 
@@ -159,6 +166,13 @@ def upload_video(
         db.commit()
         db.refresh(v2)
 
+    # 若 content > 200 字，加入 ASR 后台队列
+    if content and len(content) > 200 and v2:
+        v2.asr_status = "pending"
+        db.commit()
+        from src.services.asr_queue import enqueue_asr
+        enqueue_asr(v2.id)
+
     return _video_to_dict(v2 or v)
 
 
@@ -212,6 +226,13 @@ async def download_video_service(db: Session, data: VideoDownloadRequest) -> dic
     db.add(v)
     db.commit()
     db.refresh(v)
+
+    # 若 content > 200 字，加入 ASR 后台队列
+    if content and len(content) > 200:
+        v.asr_status = "pending"
+        db.commit()
+        from src.services.asr_queue import enqueue_asr
+        enqueue_asr(v.id)
 
     return _video_to_dict(v)
 
@@ -305,6 +326,13 @@ async def download_video_stream(db: Session, data: VideoDownloadRequest):
         db.commit()
         db.refresh(v)
 
+        # 若 content > 200 字，加入 ASR 后台队列
+        if content and len(content) > 200:
+            v.asr_status = "pending"
+            db.commit()
+            from src.services.asr_queue import enqueue_asr
+            enqueue_asr(v.id)
+
         yield _sse_event("complete", {"data": _video_to_dict(v)})
     except Exception as e:
         logger.error("下载流处理失败: %s", e)
@@ -361,28 +389,6 @@ def split_analyze(db: Session, video_id: int, language: str = "zh") -> SplitAnal
     )
 
 
-def smart_split_subtitles(db: Session, video_id: int) -> dict:
-    v = db.query(Video).get(video_id)
-    if not v:
-        raise fail_response(status_code=404, message="视频不存在")
-    if not Path(v.filepath).exists():
-        raise fail_response(status_code=404, message="视频文件不存在")
-
-    from src.processing.subtitle import extract_soft_subtitles
-
-    try:
-        subtitles = extract_soft_subtitles(v.filepath)
-    except Exception as e:
-        logger.warning("  → 软字幕提取失败: %s", e)
-        subtitles = None
-    count = len(subtitles) if subtitles else 0
-    msg = f"提取到 {count} 个字幕片段" if count > 0 else "未找到软字幕"
-    return {
-        "data": SmartSubtitlesOut(subtitles=subtitles, segment_count=count).model_dump(mode="json"),
-        "message": msg,
-    }
-
-
 def smart_split_extract_audio(db: Session, video_id: int) -> dict:
     v = db.query(Video).get(video_id)
     if not v:
@@ -401,39 +407,50 @@ def smart_split_extract_audio(db: Session, video_id: int) -> dict:
     }
 
 
-def smart_split_analyze(db: Session, video_id: int, audio_path: str, language: str, subtitles: list[dict] | None) -> dict:
-    import os
+def smart_split_analyze(db: Session, video_id: int, audio_path: str | None, language: str) -> dict:
+    import json as json_mod
     from src.processing.asr import transcribe
-    from src.config import BASE_DIR
+    from src.processing.paragraph import _timegap_merge
 
     v = db.query(Video).get(video_id)
     if not v:
         raise fail_response(status_code=404, message="视频不存在")
 
-    bin_dir = str(BASE_DIR + "/bin")
-    prev_path = os.environ.get("PATH", "")
-    os.environ["PATH"] = bin_dir + os.pathsep + prev_path
+    # 有预存的 ASR 结果 → 直接用时间间隔合并，速度快
+    if v.asr_segments:
+        try:
+            asr_segments_list = json_mod.loads(v.asr_segments)
+            if asr_segments_list:
+                logger.info("  → 使用预存 ASR 结果，跳过音频提取和 ASR（共 %d 个片段）", len(asr_segments_list))
+                paragraphs = _timegap_merge(asr_segments_list)
+                items = [
+                    ParagraphItem(seq_index=p["seq_index"], start=p["start"], end=p["end"], text=p["text"])
+                    for p in paragraphs
+                ]
+                return {
+                    "data": SplitAnalyzeOut(paragraphs=items, total_duration=v.duration,
+                                            asr_cached=True).model_dump(mode="json"),
+                    "message": f"分析完成（复用预存 ASR），共 {len(items)} 个自然段落",
+                }
+        except (json_mod.JSONDecodeError, TypeError):
+            logger.warning("ASR 预存数据解析失败，回退到实时处理")
+
+    # ASR 队列处理中
+    if v.asr_status in ("pending", "processing"):
+        raise fail_response(status_code=202, message=f"ASR 正在后台处理中（状态: {v.asr_status}），请稍后再试")
+
     try:
         logger.info("  → 开始 ASR 语音识别...")
         asr_segments = transcribe(audio_path, language=language)
     except Exception as e:
         raise fail_response(status_code=500, message=f"语音识别失败: {e}")
-    finally:
-        os.environ["PATH"] = prev_path
 
     if not asr_segments:
         raise fail_response(status_code=400, message="ASR 转录未产生任何片段")
 
     logger.info("  → ASR 完成，共 %d 个片段", len(asr_segments))
 
-    if subtitles and len(subtitles) > 0:
-        source_segments = subtitles
-        logger.info("  → 使用软字幕进行段落合并（%d 个片段）", len(source_segments))
-    else:
-        source_segments = asr_segments
-        logger.info("  → 回退到 ASR 片段进行段落合并（%d 个片段）", len(source_segments))
-
-    paragraphs = merge_into_paragraphs(source_segments)
+    paragraphs = merge_into_paragraphs(asr_segments)
 
     items = [
         ParagraphItem(seq_index=p["seq_index"], start=p["start"], end=p["end"], text=p["text"])
@@ -445,13 +462,132 @@ def smart_split_analyze(db: Session, video_id: int, audio_path: str, language: s
     }
 
 
+def _do_split_cut(video_id: int, paragraph_dicts: list[dict], extract_text: bool, remove_audio: bool) -> dict:
+    """在独立线程中执行切割，使用独立的 DB 会话。"""
+    from src.db.engine import get_session as _get_session
+    db2 = _get_session()
+    try:
+        items = [
+            ParagraphItem(seq_index=p["seq_index"], start=p["start"], end=p["end"], text=p.get("text", ""))
+            for p in paragraph_dicts
+        ]
+        result = split_cut(db2, video_id, items, extract_text, remove_audio)
+        return result.model_dump(mode="json")
+    finally:
+        db2.close()
+
+
+async def smart_split_stream(db: Session, video_id: int, language: str, extract_text: bool, remove_audio: bool):
+    """SSE 生成器：一站式智能分割，实时推送进度。"""
+    import asyncio
+    import json as json_mod
+    import time
+    from src.processing.asr import transcribe
+    from src.processing.paragraph import _timegap_merge, merge_into_paragraphs
+
+    t_total_start = time.time()
+    logger.info("[智能分割] ===== 开始 video_id=%s =============================", video_id)
+
+    try:
+        v = db.query(Video).get(video_id)
+        if not v:
+            yield _sse_event("error", {"message": "视频不存在"})
+            return
+        if not Path(v.filepath).exists():
+            yield _sse_event("error", {"message": "视频文件不存在"})
+            return
+
+        logger.info("[智能分割] 视频: %s, 时长: %.1fs, 文件: %s", v.filename, v.duration or 0, v.filepath)
+
+        # ASR 后台处理中
+        if v.asr_status in ("pending", "processing"):
+            logger.info("[智能分割] ASR 状态=%s，拒绝处理", v.asr_status)
+            yield _sse_event("error", {"message": f"ASR 正在后台处理中（状态: {v.asr_status}），请稍后再试"})
+            return
+
+        asr_segments = None
+
+        # 有预存 ASR → 跳过音频提取和 ASR
+        if v.asr_segments:
+            try:
+                cached = json_mod.loads(v.asr_segments)
+                if cached:
+                    logger.info("[智能分割] 步骤1: 使用预存 ASR（%d 个片段），跳过音频提取和 ASR", len(cached))
+                    yield _sse_event("progress", {"stage": "audio_extract", "progress": 100, "message": "跳过（使用预存 ASR）"})
+                    yield _sse_event("progress", {"stage": "asr", "progress": 100, "message": f"使用预存 ASR 结果，共 {len(cached)} 个片段"})
+                    asr_segments = cached
+            except (json_mod.JSONDecodeError, TypeError):
+                logger.warning("[智能分割] 预存 ASR 解析失败，回退到实时处理")
+
+        if not asr_segments:
+            # Step 1: 提取音频
+            t0 = time.time()
+            logger.info("[智能分割] 步骤1: 开始提取音频...")
+            yield _sse_event("progress", {"stage": "audio_extract", "progress": 0, "message": "正在提取音频..."})
+            audio_path = await asyncio.to_thread(extract_audio, v.filepath)
+            t1 = time.time()
+            logger.info("[智能分割] 步骤1: 音频提取完成，耗时 %.2fs, 路径=%s", t1 - t0, audio_path)
+            yield _sse_event("progress", {"stage": "audio_extract", "progress": 100, "message": f"音频提取完成 ({t1 - t0:.1f}s)"})
+
+            # Step 2: ASR 语音识别
+            t0 = time.time()
+            logger.info("[智能分割] 步骤2: 开始 ASR 语音识别...")
+            yield _sse_event("progress", {"stage": "asr", "progress": 0, "message": "正在进行语音识别..."})
+            asr_segments = await asyncio.to_thread(transcribe, audio_path, language)
+            t1 = time.time()
+            if not asr_segments:
+                logger.error("[智能分割] 步骤2: ASR 未产生任何片段")
+                yield _sse_event("error", {"message": "ASR 转录未产生任何片段"})
+                return
+            logger.info("[智能分割] 步骤2: ASR 完成，耗时 %.2fs, 产出 %d 个片段", t1 - t0, len(asr_segments))
+            yield _sse_event("progress", {"stage": "asr", "progress": 100, "message": f"ASR 完成 ({t1 - t0:.1f}s)，共 {len(asr_segments)} 个片段"})
+
+        # Step 3: 段落合并
+        t0 = time.time()
+        logger.info("[智能分割] 步骤3: 开始段落合并（%d 个片段，use_llm=%s）...", len(asr_segments), not v.asr_segments)
+        yield _sse_event("progress", {"stage": "paragraph_merge", "progress": 0, "message": "正在分析语义段落..."})
+        if v.asr_segments:
+            paragraphs = _timegap_merge(asr_segments)
+        else:
+            paragraphs = await asyncio.to_thread(merge_into_paragraphs, asr_segments)
+        t1 = time.time()
+
+        if not paragraphs:
+            logger.error("[智能分割] 步骤3: 段落合并未产生任何段落")
+            yield _sse_event("error", {"message": "未能识别出任何有效段落"})
+            return
+        logger.info("[智能分割] 步骤3: 段落合并完成，耗时 %.2fs, %d 个片段 → %d 个段落", t1 - t0, len(asr_segments), len(paragraphs))
+        yield _sse_event("progress", {"stage": "paragraph_merge", "progress": 100, "message": f"分析完成 ({t1 - t0:.1f}s)，共 {len(paragraphs)} 个自然段落"})
+
+        # Step 4: 切割视频
+        t0 = time.time()
+        logger.info("[智能分割] 步骤4: 开始切割 %d 个段落...", len(paragraphs))
+        yield _sse_event("progress", {"stage": "cut", "progress": 0, "message": f"正在切割 {len(paragraphs)} 个片段..."})
+        cut_result = await asyncio.to_thread(_do_split_cut, video_id, paragraphs, extract_text, remove_audio)
+        t1 = time.time()
+        material_count = cut_result.get("material_count", 0)
+        logger.info("[智能分割] 步骤4: 切割完成，耗时 %.2fs, 产出 %d 个素材", t1 - t0, material_count)
+        yield _sse_event("progress", {"stage": "cut", "progress": 100, "message": f"切割完成 ({t1 - t0:.1f}s)"})
+
+        t_total = time.time() - t_total_start
+        logger.info("[智能分割] ===== 全部完成 video_id=%s, 总耗时 %.2fs =============================", video_id, t_total)
+        yield _sse_event("complete", {"data": cut_result})
+
+    except Exception as e:
+        t_total = time.time() - t_total_start
+        logger.error("[智能分割] 失败 video_id=%s, 总耗时 %.2fs: %s", video_id, t_total, e)
+        yield _sse_event("error", {"message": str(e)})
+
+
 def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, remove_audio: bool) -> dict:
     import os
+    import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from src.processing.ffmpeg import split_video_clip, split_clip_and_extract_audio
     from src.db.models import Material as MaterialModel
     from src.api.schemas import MaterialOut
 
+    t_cut_start = time.time()
     v = db.query(Video).get(video_id)
     if not v:
         raise fail_response(status_code=404, message="视频不存在")
@@ -460,6 +596,9 @@ def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, 
 
     if not paragraphs:
         return SplitCutOut(material_count=0, material_ids=[], materials=[])
+
+    logger.info("[split_cut] 开始: %d 个段落, extract_text=%s, remove_audio=%s",
+                 len(paragraphs), extract_text, remove_audio)
 
     def _process_paragraph(p):
         seg_path = ensure_date_dir(get_config("material_dir"), f"seg_{video_id}_{p.seq_index}.mp4")
@@ -564,6 +703,10 @@ def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, 
                 pass
 
     db.commit()
+    t_cut_total = time.time() - t_cut_start
+    failed_count = sum(1 for r in results if r is None)
+    logger.info("[split_cut] 完成: %d/%d 成功, %d 失败, 总耗时 %.2fs, 向量化 %d 个素材",
+                 len(material_ids), len(paragraphs), failed_count, t_cut_total, len([r for r in results if r and r.get("text")]))
     return SplitCutOut(
         material_count=len(material_ids),
         material_ids=material_ids,

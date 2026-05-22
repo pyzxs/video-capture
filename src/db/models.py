@@ -32,6 +32,8 @@ class Video(Base):
     content = Column(Text, default="")
     status = Column(String(50), default="completed")  # completed, processing, failed
     thumbnail = Column(String(1024), default="")
+    asr_segments = Column(Text, nullable=True)  # JSON: [{start, end, text}, ...]
+    asr_status = Column(String(50), nullable=True)  # null/pending/processing/completed/failed
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

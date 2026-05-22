@@ -238,6 +238,10 @@ export default {
       pauseOne(v)
       v.currentTime = 0
     }
+    const onVideoPlay = (e) => {
+      // 拦截原生播放按钮，确保同一时刻只有一个视频播放
+      playOne(e.target)
+    }
 
     const copyScript = async (g) => {
       const text = g.script || ''
@@ -270,7 +274,7 @@ export default {
       copyScript,
       goAuto,
       statusText, formatTime, truncate, formatDuration,
-      activeVideos, activateVideo, setVideoRef, onVideoLoaded,
+      activeVideos, activateVideo, setVideoRef, onVideoLoaded, onVideoPlay,
       hoverPlay, hoverPause,
     }
   },

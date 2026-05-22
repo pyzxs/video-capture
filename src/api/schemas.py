@@ -16,6 +16,8 @@ class VideoOut(BaseModel):
     status: str = "completed"
     thumbnail: str = ""
     folder_id: int | None = None
+    asr_segments: str | None = None
+    asr_status: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -26,6 +28,8 @@ class VideoStatusOut(BaseModel):
     status: str
     content: str = ""
     filename: str = ""
+    asr_segments: str | None = None
+    asr_status: str | None = None
 
 
 class VideoCreate(BaseModel):
@@ -63,6 +67,7 @@ class ParagraphItem(BaseModel):
 class SplitAnalyzeOut(BaseModel):
     paragraphs: list[ParagraphItem]
     total_duration: float
+    asr_cached: bool = False
 
 
 class SplitCutRequest(BaseModel):
@@ -71,19 +76,19 @@ class SplitCutRequest(BaseModel):
     remove_audio: bool = True
 
 
-class SmartSubtitlesOut(BaseModel):
-    subtitles: list[dict] | None = None
-    segment_count: int = 0
-
-
 class SmartExtractAudioOut(BaseModel):
     audio_path: str
 
 
 class SmartAnalyzeRequest(BaseModel):
-    subtitles: list[dict] | None = None
-    audio_path: str
+    audio_path: str | None = None
     language: str = "zh"
+
+
+class SmartSplitStreamRequest(BaseModel):
+    language: str = "zh"
+    extract_text: bool = True
+    remove_audio: bool = True
 
 
 class VideoDubRequest(BaseModel):

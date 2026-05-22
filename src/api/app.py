@@ -122,6 +122,10 @@ def _background_init(app: FastAPI):
     from src.services.agents import ensure_default_agents
     ensure_default_agents()
 
+    # 6. 启动 ASR 后台队列 Worker
+    from src.services.asr_queue import start_asr_worker
+    start_asr_worker()
+
     default_logger.info("后台初始化完成")
 
 

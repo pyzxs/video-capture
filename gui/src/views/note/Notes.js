@@ -154,11 +154,13 @@ export default {
       this.noteForm = { title: '', content: '' }
       this.editingNote = true
       this.agentMessages = []
+      this.ensureDefaultAgent()
     },
     editNote(n) {
       this.noteForm = { title: n.title, content: n.content }
       this.editingNote = n.id
       this.agentMessages = []
+      this.ensureDefaultAgent()
     },
     async saveNote() {
       this.saving = true
@@ -374,18 +376,22 @@ export default {
       return html
     },
     // ── Agent Chat ──
+    async ensureDefaultAgent() {
+      try {
+        if (this.agents.length === 0) {
+          const res = await agentApi.list()
+          this.agents = res.data || []
+        }
+        const noteAst = this.agents.find(a => a.name === '笔记助手' || a.key === 'note_ast')
+        this.selectedAgentId = noteAst ? noteAst.id : (this.agents[0]?.id || '')
+      } catch (e) {
+        console.error('加载智能体失败', e)
+      }
+    },
     async toggleAgentChat() {
       this.showAgentChat = !this.showAgentChat
       if (this.showAgentChat && this.agents.length === 0) {
-        try {
-          const res = await agentApi.list()
-          this.agents = res.data || []
-          if (this.agents.length > 0 && !this.selectedAgentId) {
-            this.selectedAgentId = this.agents[0].id
-          }
-        } catch (e) {
-          console.error('加载智能体失败', e)
-        }
+        await this.ensureDefaultAgent()
       }
       this.$nextTick(() => this.scrollAgentChat())
     },

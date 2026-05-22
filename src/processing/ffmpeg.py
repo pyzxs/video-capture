@@ -20,8 +20,6 @@ def _run(cmd, **kwargs):
     kwargs.setdefault("creationflags", _CREATIONFLAGS)
     return subprocess.run(cmd, **kwargs)
 
-print(f"音频处理工具地址: {_bin_dir}")
-
 
 # ── 硬件编码器检测（启动时探测一次，缓存结果） ──
 
@@ -158,18 +156,37 @@ def split_video_clip(
         crop: str | None = None,
         no_audio: bool = False,
 ) -> str:
-    """按时间范围分割视频片段，并使用分离后人声作为音轨。
+    """按时间范围分割视频片段。
 
-    将原视频画面与处理后的人声音轨合并输出。
-    若 no_audio=True，则输出不含音轨的纯视频片段。
-    crop: ffmpeg crop 表达式，如 "1280:610:0:0"（裁掉底部 110px）
+    - 无滤镜（无 crop、无人声替换）→ 流拷贝 ``-c copy``，毫秒级
+    - 需要 crop / 人声替换 → 硬件重编码
     """
-    enc = _get_encoder()
+    import time
+    duration = end - start
+    t0 = time.time()
+
+    need_reencode = bool(crop) or (vocals_path and Path(vocals_path).exists())
+
     cmd = [
         FFMPEG,
         "-ss", str(start), "-to", str(end),
         "-i", str(video_path),
     ]
+
+    if not need_reencode:
+        # ── 快速路径：流拷贝 ──
+        cmd += ["-c", "copy"]
+        if no_audio:
+            cmd += ["-an"]
+        cmd += ["-avoid_negative_ts", "make_zero", "-y", str(output_path)]
+        _run(cmd, check=True, capture_output=True)
+        t1 = time.time()
+        logger.info("  → split(copy) %.1fs-%.1fs (%.1fs), %.2fs",
+                     start, end, duration, t1 - t0)
+        return output_path
+
+    # ── 慢路径：硬件重编码 ──
+    enc = _get_encoder()
     if no_audio:
         if crop:
             cmd += ["-vf", f"crop={crop}"]
@@ -202,6 +219,9 @@ def split_video_clip(
             "-y", str(output_path),
         ]
     _run(cmd, check=True, capture_output=True)
+    t1 = time.time()
+    logger.info("  → split(encode) %.1fs-%.1fs (%.1fs), %s, %.2fs",
+                 start, end, duration, enc[1], t1 - t0)
     return output_path
 
 
@@ -213,21 +233,32 @@ def split_clip_and_extract_audio(
         audio_output: str,
         no_audio: bool = False,
 ) -> str:
-    """一次 ffmpeg 调用同时输出视频片段和 ASR 用音频，减少磁盘 I/O。"""
-    enc = _get_encoder()
+    """一次 ffmpeg 调用同时输出视频片段和 ASR 用音频。
+
+    视频输出用流拷贝（毫秒级），音频输出编码为 WAV。
+    """
+    import time
+    t0 = time.time()
+    duration = end - start
+
     cmd = [
         FFMPEG,
         "-ss", str(start), "-to", str(end),
         "-i", str(video_path),
     ]
+    # 视频输出：流拷贝
     if no_audio:
-        cmd += [*enc, "-an", "-y", str(video_output)]
+        cmd += ["-c:v", "copy", "-an", "-y", str(video_output)]
     else:
-        cmd += ["-map", "0:v:0", "-map", "0:a:0", *enc,
-                "-c:a", "aac", "-b:a", "192k", "-y", str(video_output)]
+        cmd += ["-map", "0:v:0", "-map", "0:a:0", "-c", "copy",
+                "-y", str(video_output)]
+    # 音频输出：编码为 WAV
     cmd += ["-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
             "-y", str(audio_output)]
     _run(cmd, check=True, capture_output=True)
+    t1 = time.time()
+    logger.info("  → split+audio(copy) %.1fs-%.1fs (%.1fs), %.2fs",
+                 start, end, duration, t1 - t0)
     return video_output
 
 
@@ -362,7 +393,8 @@ def concat_videos_by_movie(
     return output_path
 
 
-def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str | None = None, bg_volume: float = 1.0) -> str:
+def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str | None = None,
+                     bg_volume: float = 1.0) -> str:
     """将多个音频文件混入视频中（保留原视频音轨并叠加音频素材）。
 
     参数：
@@ -409,7 +441,7 @@ def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str |
         if bg_volume < 1.0:
             parts = [f"[0:a]volume=1.0[a0]"]
             for i in range(len(audio_paths)):
-                parts.append(f"[{i+1}:a]volume={bg_volume:.2f}[a{i+1}]")
+                parts.append(f"[{i + 1}:a]volume={bg_volume:.2f}[a{i + 1}]")
             mix_inputs = "".join(f"[a{i}]" for i in range(n_inputs))
             filter_str = ";".join(parts) + f";{mix_inputs}amix=inputs={n_inputs}:duration=first[aud]"
         else:
@@ -424,8 +456,8 @@ def mix_audio_tracks(video_path: str, audio_paths: list[str], output_path: str |
         if bg_volume < 1.0:
             parts = []
             for i in range(len(audio_paths)):
-                parts.append(f"[{i+1}:a]volume={bg_volume:.2f}[a{i+1}]")
-            mix_inputs = "".join(f"[a{i+1}]" for i in range(len(audio_paths)))
+                parts.append(f"[{i + 1}:a]volume={bg_volume:.2f}[a{i + 1}]")
+            mix_inputs = "".join(f"[a{i + 1}]" for i in range(len(audio_paths)))
             filter_str = ";".join(parts) + f";{mix_inputs}amix=inputs={n_inputs}:duration=first[aud]"
         else:
             filter_parts = [f"[{i + 1}:a]" for i in range(n_inputs)]
