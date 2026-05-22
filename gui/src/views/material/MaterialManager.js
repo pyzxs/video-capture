@@ -400,6 +400,28 @@ const mdInsertText = (before, after) => {
       }
     }
 
+    // ── Subtitle Erase ──
+    const erasingMaterialId = ref(null)
+
+    const eraseSubtitle = async (m) => {
+      if (!await toast.confirm(
+        `确定要擦除素材「${m.filename || m.content?.slice(0, 20) || '#' + m.id}」的字幕吗？\n\n费用：每分钟 ¥1\n注意：1 分钟视频约需处理 15 分钟，请耐心等待`
+      )) return
+      erasingMaterialId.value = m.id
+      try {
+        toast.info('正在上传并提交擦除任务...')
+        const res = await materialApi.eraseSubtitle(m.id)
+        const data = res.data?.data || res.data
+        const taskId = data.task_id
+        if (!taskId) throw new Error('未获取到 task_id')
+        toast.success('任务已提交，后台处理中（预计 2-5 分钟），完成后自动替换素材，可关闭页面稍后刷新查看')
+      } catch (e) {
+        toast.error('擦除失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
+      } finally {
+        erasingMaterialId.value = null
+      }
+    }
+
     const onPageChange = (p) => {
       page.value = p
       loadMaterials()
@@ -526,6 +548,8 @@ const mdInsertText = (before, after) => {
       ttsAgents, ttsSelectedAgentId,
       toggleTtsChat, sendTtsChat, applyTtsRewrite, onTtsAgentChange, clearTtsChat,
       showTextPreview, textMdTextarea, mdInsertText, mdLinkText,
+      // Subtitle erase
+      erasingMaterialId, eraseSubtitle,
     }
   },
 }

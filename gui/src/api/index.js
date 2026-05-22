@@ -123,6 +123,7 @@ export const materialApi = {
     fd.append('end_frame', endFrame)
     return api.post('/materials/from-segment', fd)
   },
+  eraseSubtitle: (id) => api.post(`/materials/${id}/subtitle-erase`, null, { timeout: 600000 }),
 }
 
 // ── Settings ──
