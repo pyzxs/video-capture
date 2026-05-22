@@ -1,7 +1,6 @@
 """Material business logic: CRUD, upload, TTS creation, segment creation, vector indexing."""
 import shutil
 import subprocess
-import sys
 import uuid
 from pathlib import Path
 
@@ -13,9 +12,7 @@ from src.config import API_BASE_URL, get_config
 from src.db.models import Material
 from src.processing.ffmpeg import get_video_info
 from src.services.tts import synthesize
-from src.utils import ensure_date_dir, get_image_size, generate_thumbnail, thumb_url
-
-_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+from src.utils import ensure_date_dir, get_image_size, generate_thumbnail, thumb_url, _CREATIONFLAGS
 
 _vector_store: "VectorStore | None" = None
 
@@ -132,7 +129,6 @@ def create_material_with_file(
         if mat_type == "audio" and _detect_type(filename) == "video":
             from src.processing.ffmpeg import FFMPEG
             audio_dest = dest.with_suffix(".mp3")
-            _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
             subprocess.run(
                 [FFMPEG, "-i", str(dest), "-vn", "-c:a", "libmp3lame", "-q:a", "2", "-y", str(audio_dest)],
                 check=True, capture_output=True,

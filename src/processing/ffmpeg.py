@@ -3,40 +3,22 @@
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 from moviepy import ImageClip, VideoFileClip, concatenate_videoclips
 
-from src.config import get_config, BASE_DIR
+from src.config import get_config
 from src.logger import default_logger as logger
-from src.utils import ensure_date_dir
+from src.utils import ensure_date_dir, get_ffmpeg_path, get_ffprobe_path, _CREATIONFLAGS
 
-# Windows 下隐藏 ffmpeg/ffprobe 子进程的控制台窗口
-_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+FFMPEG = get_ffmpeg_path()
+FFPROBE = get_ffprobe_path()
 
 
 def _run(cmd, **kwargs):
     """subprocess.run 包装，Windows 下自动隐藏控制台窗口。"""
     kwargs.setdefault("creationflags", _CREATIONFLAGS)
     return subprocess.run(cmd, **kwargs)
-
-
-# ── bin 路径：打包后用 exe 同级目录下的 bin/，开发时用项目根下的 bin/ ──
-if getattr(sys, 'frozen', False):
-    _bin_dir = Path(sys.executable).parent / "bin"
-else:
-    _bin_dir = Path(BASE_DIR) / "bin"
-
-if sys.platform == "win32":
-    FFMPEG = str(_bin_dir / "ffmpeg.exe")
-    FFPROBE = str(_bin_dir / "ffprobe.exe")
-else:
-    FFMPEG = str(_bin_dir / "ffmpeg")
-    FFPROBE = str(_bin_dir / "ffprobe")
-
-# 兼容旧代码的 ffmpeg_prefix（外部模块仍在使用）
-ffmpeg_prefix = str(_bin_dir) + "/"
 
 print(f"音频处理工具地址: {_bin_dir}")
 

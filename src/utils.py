@@ -15,8 +15,23 @@ if getattr(sys, 'frozen', False):
     _bin_dir = Path(sys.executable).parent / "bin"
 else:
     _bin_dir = Path(BASE_DIR) / "bin"
-_FFMPEG_EXE = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-_ffmpeg_bin = str(_bin_dir / _FFMPEG_EXE)
+
+if sys.platform == "win32":
+    _ffmpeg_bin = str(_bin_dir / "ffmpeg.exe")
+    _ffprobe_bin = str(_bin_dir / "ffprobe.exe")
+else:
+    _ffmpeg_bin = str(_bin_dir / "ffmpeg")
+    _ffprobe_bin = str(_bin_dir / "ffprobe")
+
+
+def get_ffmpeg_path() -> str:
+    """获取 ffmpeg 可执行文件路径。"""
+    return _ffmpeg_bin
+
+
+def get_ffprobe_path() -> str:
+    """获取 ffprobe 可执行文件路径。"""
+    return _ffprobe_bin
 
 _TIMESTAMP_RE = re.compile(
     r"(\d+):(\d{2}):(\d{2})[,.](\d+)"

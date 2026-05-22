@@ -1,6 +1,5 @@
 """Editor business logic: subtitle extraction, directory listing."""
 import subprocess
-import sys
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -10,8 +9,7 @@ from src.config import OUTPUT_DIR
 from src.db.models import Material
 from src.processing.asr import transcribe
 from src.processing.ffmpeg import FFMPEG
-
-_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+from src.utils import _CREATIONFLAGS
 
 
 def extract_subtitles(req, db: Session) -> dict:

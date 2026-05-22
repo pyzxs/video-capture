@@ -2,7 +2,6 @@
 import hashlib
 import json
 import subprocess
-import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -22,8 +21,7 @@ from src.config import get_config
 from src.db.models import GeneratedVideo, Material
 from src.logger import default_logger as logger
 
-_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
+from src.utils import ensure_date_dir, generate_thumbnail, thumb_url, _CREATIONFLAGS
 
 
 # ── helpers ──

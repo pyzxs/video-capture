@@ -3,7 +3,6 @@
 import asyncio
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -11,16 +10,9 @@ import aiohttp
 import yt_dlp
 
 from .base import BaseDownloader, VideoInfo
-from ..config import BASE_DIR
+from ..utils import get_ffmpeg_path
 
-
-# ffmpeg 路径（与 src.processing.ffmpeg 保持一致的逻辑）
-if getattr(sys, 'frozen', False):
-    _bin_dir = Path(sys.executable).parent / "bin"
-else:
-    _bin_dir = Path(BASE_DIR) / "bin"
-
-_ffmpeg_exe = str(_bin_dir / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"))
+_ffmpeg_exe = get_ffmpeg_path()
 
 
 class BilibiliDownloader(BaseDownloader):

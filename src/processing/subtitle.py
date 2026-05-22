@@ -3,25 +3,16 @@
 import json
 import re
 import subprocess
-import sys
 from pathlib import Path
 
-from src.config import get_config, BASE_DIR
+from src.config import get_config
 from src.logger import default_logger as logger
 from src.processing.asr import transcribe
 from src.processing.ffmpeg import extract_audio
-from src.utils import ensure_date_dir, ts_to_seconds
+from src.utils import ensure_date_dir, ts_to_seconds, get_ffmpeg_path, get_ffprobe_path, _CREATIONFLAGS
 
-_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-
-if getattr(sys, 'frozen', False):
-    _bin_dir = Path(sys.executable).parent / "bin"
-else:
-    _bin_dir = Path(BASE_DIR) / "bin"
-_FFMPEG_NAME = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-_FFPROBE_NAME = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
-_ffmpeg_bin = str(_bin_dir / _FFMPEG_NAME)
-_ffprobe_bin = str(_bin_dir / _FFPROBE_NAME)
+_ffmpeg_bin = get_ffmpeg_path()
+_ffprobe_bin = get_ffprobe_path()
 
 
 def parse_srt(path: str | Path) -> list[dict]:

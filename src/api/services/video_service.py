@@ -4,7 +4,6 @@ import json
 import re
 import shutil
 import subprocess
-import sys
 import uuid
 from pathlib import Path
 
@@ -30,9 +29,7 @@ from src.processing.asr import transcribe_return_text, transcribe_by_api
 from src.processing.ffmpeg import get_video_info, extract_audio
 from src.processing.paragraph import merge_into_paragraphs
 from src.processing.subtitle import get_timestamps
-from src.utils import ensure_date_dir, generate_thumbnail, thumb_url
-
-_CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+from src.utils import ensure_date_dir, generate_thumbnail, thumb_url, _CREATIONFLAGS
 
 
 def _video_to_dict(v: Video) -> dict:

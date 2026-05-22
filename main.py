@@ -80,16 +80,11 @@ try:
     import uvicorn
 
     # 设置 moviepy/imageio 使用的 ffmpeg 路径
-    if getattr(sys, "frozen", False):
-        _bin_dir = Path(sys.executable).parent / "bin"
-    else:
-        _bin_dir = Path(__file__).resolve().parent / "bin"
-
-    _ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-    _ffmpeg_path = _bin_dir / _ffmpeg_name
-    if _ffmpeg_path.exists():
-        os.environ.setdefault("IMAGEIO_FFMPEG_EXE", str(_ffmpeg_path))
-        os.environ.setdefault("FFMPEG_BINARY", str(_ffmpeg_path))
+    from src.utils import get_ffmpeg_path
+    _ffmpeg_path = get_ffmpeg_path()
+    if Path(_ffmpeg_path).exists():
+        os.environ.setdefault("IMAGEIO_FFMPEG_EXE", _ffmpeg_path)
+        os.environ.setdefault("FFMPEG_BINARY", _ffmpeg_path)
         print(f"ffmpeg 路径: {_ffmpeg_path}")
     else:
         print(f"警告: ffmpeg 未找到 ({_ffmpeg_path})，依赖 ffmpeg 的功能可能不可用")
