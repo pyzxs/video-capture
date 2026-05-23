@@ -22,7 +22,6 @@ model
 thumbnails
 bin
 release/
-gui/public
 scripts/upx.exe
 output
 gen_config_enc.py
