@@ -243,6 +243,9 @@ def _sse_event(event_type: str, data: dict) -> str:
 
 async def download_video_stream(db: Session, data: VideoDownloadRequest):
     """SSE 生成器：带进度的视频下载流程。"""
+    from src.db.engine import get_session
+
+    db = get_session()
     try:
         query_text = data.urls.strip()
         if not query_text:
@@ -337,6 +340,8 @@ async def download_video_stream(db: Session, data: VideoDownloadRequest):
     except Exception as e:
         logger.error("下载流处理失败: %s", e)
         yield _sse_event("error", {"message": str(e)})
+    finally:
+        db.close()
 
 
 def get_video_file_path(db: Session, video_id: int) -> str:
@@ -484,7 +489,9 @@ async def smart_split_stream(db: Session, video_id: int, language: str, extract_
     import time
     from src.processing.asr import transcribe
     from src.processing.paragraph import _timegap_merge, merge_into_paragraphs
+    from src.db.engine import get_session
 
+    db = get_session()
     t_total_start = time.time()
     logger.info("[智能分割] ===== 开始 video_id=%s =============================", video_id)
 
@@ -506,12 +513,14 @@ async def smart_split_stream(db: Session, video_id: int, language: str, extract_
             return
 
         asr_segments = None
+        had_cached_asr = False
 
         # 有预存 ASR → 跳过音频提取和 ASR
         if v.asr_segments:
             try:
                 cached = json_mod.loads(v.asr_segments)
                 if cached:
+                    had_cached_asr = True
                     logger.info("[智能分割] 步骤1: 使用预存 ASR（%d 个片段），跳过音频提取和 ASR", len(cached))
                     yield _sse_event("progress", {"stage": "audio_extract", "progress": 100, "message": "跳过（使用预存 ASR）"})
                     yield _sse_event("progress", {"stage": "asr", "progress": 100, "message": f"使用预存 ASR 结果，共 {len(cached)} 个片段"})
@@ -542,11 +551,17 @@ async def smart_split_stream(db: Session, video_id: int, language: str, extract_
             logger.info("[智能分割] 步骤2: ASR 完成，耗时 %.2fs, 产出 %d 个片段", t1 - t0, len(asr_segments))
             yield _sse_event("progress", {"stage": "asr", "progress": 100, "message": f"ASR 完成 ({t1 - t0:.1f}s)，共 {len(asr_segments)} 个片段"})
 
+            # 持久化 ASR 结果，后续重新分割时无需再次提取
+            v.asr_segments = json_mod.dumps(asr_segments, ensure_ascii=False)
+            v.asr_status = "completed"
+            db.commit()
+            logger.info("[智能分割] ASR 结果已持久化到数据库，共 %d 个片段", len(asr_segments))
+
         # Step 3: 段落合并
         t0 = time.time()
-        logger.info("[智能分割] 步骤3: 开始段落合并（%d 个片段，use_llm=%s）...", len(asr_segments), not v.asr_segments)
+        logger.info("[智能分割] 步骤3: 开始段落合并（%d 个片段，use_llm=%s）...", len(asr_segments), not had_cached_asr)
         yield _sse_event("progress", {"stage": "paragraph_merge", "progress": 0, "message": "正在分析语义段落..."})
-        if v.asr_segments:
+        if had_cached_asr:
             paragraphs = _timegap_merge(asr_segments)
         else:
             paragraphs = await asyncio.to_thread(merge_into_paragraphs, asr_segments)
@@ -577,6 +592,8 @@ async def smart_split_stream(db: Session, video_id: int, language: str, extract_
         t_total = time.time() - t_total_start
         logger.error("[智能分割] 失败 video_id=%s, 总耗时 %.2fs: %s", video_id, t_total, e)
         yield _sse_event("error", {"message": str(e)})
+    finally:
+        db.close()
 
 
 def split_cut(db: Session, video_id: int, paragraphs: list, extract_text: bool, remove_audio: bool) -> dict:

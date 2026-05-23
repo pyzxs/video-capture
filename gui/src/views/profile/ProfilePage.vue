@@ -7,26 +7,36 @@
       </div>
       <div v-if="loading" class="loading"></div>
       <template v-else-if="profile">
-        <div class="info-grid">
-          <div class="info-item">
-            <label>用户ID</label>
-            <span class="mono">{{ profile.user_id }}</span>
+        <div class="profile-layout">
+          <div class="info-grid">
+            <div class="info-item">
+              <label>用户ID</label>
+              <span class="mono">{{ profile.user_id }}</span>
+            </div>
+            <div class="info-item">
+              <label>授权密钥</label>
+              <span class="mono">{{ profile.api_key }}</span>
+            </div>
+            <div class="info-item">
+              <label>免费额度</label>
+              <span>¥{{ profile.free_quota?.toFixed(2) }}</span>
+            </div>
+            <div class="info-item highlight">
+              <label>剩余额度</label>
+              <span>¥{{ profile.remaining_quota?.toFixed(4) }}</span>
+            </div>
+            <div class="info-item">
+              <label>Token 总消耗</label>
+              <span>¥{{ totalCost.toFixed(4) }}</span>
+            </div>
+            <div class="info-item">
+              <label>注册时间</label>
+              <span>{{ formatDate(profile.created_at) }}</span>
+            </div>
           </div>
-          <div class="info-item">
-            <label>授权密钥</label>
-            <span class="mono">{{ profile.api_key }}</span>
-          </div>
-          <div class="info-item">
-            <label>免费额度</label>
-            <span>¥{{ profile.free_quota?.toFixed(2) }}</span>
-          </div>
-          <div class="info-item highlight">
-            <label>剩余额度</label>
-            <span>¥{{ profile.remaining_quota?.toFixed(4) }}</span>
-          </div>
-          <div class="info-item">
-            <label>注册时间</label>
-            <span>{{ formatDate(profile.created_at) }}</span>
+          <div class="profile-qrcode">
+            <img src="/weixin.png" alt="微信二维码" class="qrcode-img" />
+            <p class="qrcode-tip">扫码添加微信<br/>获取充值码</p>
           </div>
         </div>
       </template>
@@ -109,6 +119,13 @@ export default {
   computed: {
     totalPages() {
       return Math.max(1, Math.ceil(this.total / this.pageSize))
+    },
+    totalCost() {
+      if (!this.profile) return 0
+      if (this.profile.total_cost !== undefined && this.profile.total_cost !== null) {
+        return this.profile.total_cost
+      }
+      return (this.profile.free_quota || 0) - (this.profile.remaining_quota || 0)
     },
   },
   mounted() {
@@ -217,5 +234,33 @@ export default {
 }
 .recharge-msg.error {
   color: #dc2626;
+}
+.profile-layout {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+}
+.profile-layout .info-grid {
+  flex: 1;
+}
+.profile-qrcode {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 1px solid #f3f4f6;
+}
+.qrcode-img {
+  width: 130px;
+  height: 130px;
+  border-radius: 8px;
+  display: block;
+}
+.qrcode-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.5;
 }
 </style>

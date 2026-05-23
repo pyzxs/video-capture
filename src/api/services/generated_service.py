@@ -540,6 +540,27 @@ def _execute_auto_generate(data: AutoGenerateRequest, db: Session, batch_index: 
             except Exception as e:
                 logger.warning("  → 背景音频混入失败: %s", e)
 
+    # 4.6 字幕渲染（基于配音脚本的 TTS 音频做 ASR 获取时间戳）
+    if data.show_subtitle and audio_filepath and Path(audio_filepath).exists():
+        try:
+            from src.processing.asr import transcribe
+            from src.processing.ffmpeg import composite_subtitles
+            logger.info("  → 开始提取配音字幕...")
+            segments = transcribe(audio_filepath, language="zh")
+            if segments:
+                ass_path = str(Path(final_output).parent / f"{prefix_file}_subs.ass")
+                _write_asr_ass(segments, ass_path)
+                final_output = composite_subtitles(final_output, ass_path)
+                try:
+                    Path(ass_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                logger.info("  → 配音字幕已压制，共 %d 条", len(segments))
+            else:
+                logger.warning("  → ASR 未提取到字幕内容")
+        except Exception as e:
+            logger.warning("  → 字幕渲染失败（不影响生成）: %s", e)
+
     # 5. 构建轨道数据
     material_list = []
     current_frame = 0
@@ -1130,8 +1151,8 @@ def batch_generate_groups(db: Session, gen_id: int) -> dict:
     return {"count": len(results), "results": results}
 
 
-def batch_generate_groups_stream(db: Session, gen_id: int):
-    """SSE 流式版本：逐条生成并实时推送进度"""
+def _batch_generate_groups_stream(db: Session, gen_id: int):
+    """SSE 流式版本：逐条生成并实时推送进度（内部实现）。"""
     import itertools
     import subprocess
     from src.processing.ffmpeg import FFMPEG, FFPROBE, get_video_duration
@@ -1409,26 +1430,43 @@ def batch_generate_groups_stream(db: Session, gen_id: int):
         yield _sse_event("complete", {"count": len(results), "results": results})
 
 
+def batch_generate_groups_stream(db: Session, gen_id: int):
+    """SSE 流式版本：逐条生成并实时推送进度（带 session 生命周期管理）。"""
+    from src.db.engine import get_session
+
+    db = get_session()
+    try:
+        yield from _batch_generate_groups_stream(db, gen_id)
+    finally:
+        db.close()
+
+
 def auto_batch_generate_stream(data: AutoBatchGenerateRequest, db: Session):
     """SSE 流式版本：逐条自动生成并实时推送进度"""
-    count = max(1, min(data.count, 50))
+    from src.db.engine import get_session
 
-    results = []
-    for i in range(count):
-        try:
-            result = _execute_auto_generate(data, db, batch_index=i)
-            results.append(result)
-            yield _sse_event("progress", {"current": i + 1, "total": count, "video": result})
-        except HTTPException as e:
-            yield _sse_event("error", {"message": str(e.detail)})
-            return
-        except Exception as e:
-            logger.warning("第 %d 条生成失败: %s", i + 1, e)
+    db = get_session()
+    try:
+        count = max(1, min(data.count, 50))
 
-    if not results:
-        yield _sse_event("error", {"message": "没有成功生成任何视频"})
-    else:
-        yield _sse_event("complete", {"count": len(results), "results": results})
+        results = []
+        for i in range(count):
+            try:
+                result = _execute_auto_generate(data, db, batch_index=i)
+                results.append(result)
+                yield _sse_event("progress", {"current": i + 1, "total": count, "video": result})
+            except HTTPException as e:
+                yield _sse_event("error", {"message": str(e.detail)})
+                return
+            except Exception as e:
+                logger.warning("第 %d 条生成失败: %s", i + 1, e)
+
+        if not results:
+            yield _sse_event("error", {"message": "没有成功生成任何视频"})
+        else:
+            yield _sse_event("complete", {"count": len(results), "results": results})
+    finally:
+        db.close()
 
 
 def _sse_event(event_type: str, data: dict) -> str:

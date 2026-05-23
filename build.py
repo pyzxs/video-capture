@@ -242,7 +242,7 @@ def build(use_upx: bool = False, console: bool = False):
     print(f"  复制元数据: {len(COPY_METADATA)} 个包")
 
     # 添加入口文件
-    pyi_args.append(str(ROOT / "main.py"))
+    pyi_args.append(str(Path(__file__).resolve().parent / "main.py"))
 
     print(f"  窗口模式: {'控制台' if console else '后台（无控制台）'}")
 

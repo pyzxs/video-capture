@@ -217,6 +217,7 @@ class AutoGenerateRequest(BaseModel):
     tts_voice: str | None = None
     audio_material_id: int | None = None
     folder_id: int | None = None
+    show_subtitle: bool = False
 
 
 class AutoBatchGenerateRequest(AutoGenerateRequest):

@@ -99,6 +99,18 @@
 
         <div class="toolbar-divider"></div>
 
+        <div class="toolbar-group">
+          <label class="toolbar-label">字幕</label>
+          <label class="expand-toggle" :class="{ on: autoForm.showSubtitle }" title="开启后将配音内容合成到视频字幕">
+            <span class="expand-toggle-track">
+              <span class="expand-toggle-thumb"></span>
+            </span>
+            <input type="checkbox" v-model="autoForm.showSubtitle" class="expand-toggle-input" :disabled="autoProcessing" />
+          </label>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
         <button class="toolbar-ai-btn" :class="{ active: showChat }" @click="toggleChat" :disabled="autoProcessing" :title="showChat ? '关闭 AI 助手' : 'AI 辅助生成脚本'">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
