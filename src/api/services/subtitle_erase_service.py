@@ -133,14 +133,8 @@ def apply_erase(filepath: str, task_id: str, db, orm_model, video_url: str = "")
     if not record:
         raise fail_response(status_code=404, message="数据库记录不存在")
 
-    # 备份原文件
-    bak_path = old_path.with_suffix(old_path.suffix + ".bak")
-    try:
-        old_path.rename(bak_path)
-    except OSError as e:
-        logger.warning("备份原文件失败: %s", e)
-
     record.filepath = str(new_filepath)
+    record.cms_filepath = str(old_path)  # 保存擦除前的原始文件路径
     record.frame_width = meta.get("width", record.frame_width)
     record.frame_height = meta.get("height", record.frame_height)
     record.frame_rate = meta.get("fps", record.frame_rate)
@@ -156,8 +150,8 @@ def apply_erase(filepath: str, task_id: str, db, orm_model, video_url: str = "")
     return {
         "id": record.id,
         "filepath": str(new_filepath),
+        "cms_filepath": str(old_path),
         "frame_width": record.frame_width,
         "frame_height": record.frame_height,
         "frame_rate": record.frame_rate,
-        "bak_path": str(bak_path),
     }

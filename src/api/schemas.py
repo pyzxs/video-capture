@@ -113,6 +113,7 @@ class MaterialBase(BaseModel):
     frame_rate: float = 0.0
     filename: str | None = ""
     filepath: str | None = ""
+    cms_filepath: str | None = ""
     file_url: str = ""
     thumbnail: str = ""
     status: int = 1
@@ -133,6 +134,7 @@ class MaterialUpdate(BaseModel):
     frame_rate: float | None = None
     filename: str | None = None
     filepath: str | None = None
+    cms_filepath: str | None = None
     status: int | None = None
     folder_id: int | None = None
 

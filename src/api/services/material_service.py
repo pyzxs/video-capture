@@ -299,6 +299,21 @@ def get_material_file_path(db: Session, material_id: int) -> str:
     return m.filepath
 
 
+def swap_material_filepath(db: Session, material_id: int) -> Material:
+    """交换 filepath 和 cms_filepath，用于在原始文件和擦除后文件之间切换。"""
+    m = db.query(Material).get(material_id)
+    if not m:
+        raise fail_response(status_code=404, message="素材不存在")
+    if not m.cms_filepath:
+        raise fail_response(status_code=400, message="该素材没有可切换的原始文件")
+    m.filepath, m.cms_filepath = m.cms_filepath, m.filepath
+    db.commit()
+    db.refresh(m)
+    m.file_url = f"{API_BASE_URL}/api/materials/{m.id}/file"
+    m.thumbnail = thumb_url(m.thumbnail)
+    return m
+
+
 def create_material_from_segment(
     db: Session,
     source_id: int,

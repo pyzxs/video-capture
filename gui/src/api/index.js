@@ -124,6 +124,7 @@ export const materialApi = {
     return api.post('/materials/from-segment', fd)
   },
   eraseSubtitle: (id) => api.post(`/materials/${id}/subtitle-erase`, null, { timeout: 600000 }),
+  swapFilepath: (id) => api.put(`/materials/${id}/swap-filepath`),
 }
 
 // ── Settings ──

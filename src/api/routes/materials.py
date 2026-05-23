@@ -16,6 +16,7 @@ from src.api.services.material_service import (
     get_material,
     get_material_file_path,
     list_materials,
+    swap_material_filepath,
     update_material,
 )
 from src.api.services.subtitle_erase_service import submit_erase, query_erase, apply_erase
@@ -110,7 +111,7 @@ def _submit_material_subtitle_erase(
     db: Session = Depends(get_db),
 ):
     if _active_erase_tasks:
-        return response_success(code=400, message="有擦除任务正在执行中，请等待完成后再提交")
+        return response_success(status_code=400, message="有擦除任务正在执行中，请等待完成后再提交")
 
     filepath = get_material_file_path(db, material_id)
     result = submit_erase(filepath)
@@ -120,6 +121,11 @@ def _submit_material_subtitle_erase(
         _active_erase_tasks.add(material_id)
         background_tasks.add_task(_background_poll_and_apply, task_id, material_id, filepath, cms_filepath)
     return response_success(data=result, message="字幕擦除任务已提交，后台处理中")
+
+
+@router.put("/{material_id}/swap-filepath", description="切换 filepath 和 cms_filepath（原始文件 ↔ 擦除后文件）")
+def _swap_material_filepath(material_id: int, db: Session = Depends(get_db)):
+    return swap_material_filepath(db, material_id)
 
 
 @router.get("/subtitle-erase/{task_id}", description="查询字幕擦除任务状态")

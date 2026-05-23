@@ -53,6 +53,7 @@ class Material(Base):
     frame_rate = Column(Float, default=0.0)
     filename = Column(String(255), default="")
     filepath = Column(String(1024), default="")
+    cms_filepath = Column(String(1024), default="")
     thumbnail = Column(String(1024), default="")
     status = Column(Integer, default=1)  # 1=有效, 0=缓存
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)

@@ -1,5 +1,5 @@
 import { ref, computed, onMounted, watch } from 'vue'
-import { materialApi, folderApi, exportApi } from '../../api/index.js'
+import { materialApi, folderApi, exportApi, apiUrl } from '../../api/index.js'
 import { useToast } from '../../composables/useToast.js'
 import { useFolders } from '../../composables/useFolders.js'
 import { usePlaybackGuard } from '../../composables/usePlaybackGuard.js'
@@ -414,11 +414,27 @@ const mdInsertText = (before, after) => {
         const data = res.data?.data || res.data
         const taskId = data.task_id
         if (!taskId) throw new Error('未获取到 task_id')
-        toast.success('任务已提交，后台处理中（预计 2-5 分钟），完成后自动替换素材，可关闭页面稍后刷新查看')
+        // toast.success('任务已提交，后台处理中，完成后自动替换素材，可关闭页面稍后刷新查看')
       } catch (e) {
         toast.error('擦除失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
       } finally {
         erasingMaterialId.value = null
+      }
+    }
+
+    const swapFilepath = async (m) => {
+      if (!await toast.confirm(
+        `确定要切换素材「${m.filename || m.content?.slice(0, 20) || '#' + m.id}」的视频文件吗？\n\n将在原始文件和擦除后文件之间切换。`
+      )) return
+      try {
+        const el = videoEls[m.id]
+        if (el) { el.pause(); pauseOne(el) }
+        await materialApi.swapFilepath(m.id)
+        videoCacheKeys.value = { ...videoCacheKeys.value, [m.id]: (videoCacheKeys.value[m.id] || 0) + 1 }
+        toast.success('切换成功')
+        loadMaterials()
+      } catch (e) {
+        toast.error('切换失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
       }
     }
 
@@ -484,7 +500,12 @@ const mdInsertText = (before, after) => {
 
     // Lazy video loading
     const activeVideos = ref(new Set())
+    const videoCacheKeys = ref({})
     const videoEls = {}
+    const getVideoUrl = (id) => {
+      const k = videoCacheKeys.value[id] || 0
+      return apiUrl(`/api/materials/${id}/file`) + (k ? `?v=${k}` : '')
+    }
     const activateVideo = (id) => {
       const s = new Set(activeVideos.value)
       s.add(id)
@@ -539,7 +560,7 @@ const mdInsertText = (before, after) => {
       openCreate, openEdit, closeDialog, saveMaterial, deleteMaterial,
       showDialog, editing, form, selectedFile, dragging, saving, fileInput,
       onFileSelect, onDrop, clearFile, formatSize, truncate,
-      activeVideos, activateVideo, setVideoRef, onVideoLoaded,
+      activeVideos, activateVideo, setVideoRef, onVideoLoaded, getVideoUrl,
       hoverPlay, hoverPause, onAudioPlay, mdTextarea, showPreview, showEditPreview,
       mdInsert, mdLink, renderMarkdown,
       audioMode, ttsText, ttsVoice, ttsBusy, ttsGenerate,
@@ -549,7 +570,7 @@ const mdInsertText = (before, after) => {
       toggleTtsChat, sendTtsChat, applyTtsRewrite, onTtsAgentChange, clearTtsChat,
       showTextPreview, textMdTextarea, mdInsertText, mdLinkText,
       // Subtitle erase
-      erasingMaterialId, eraseSubtitle,
+      erasingMaterialId, eraseSubtitle, swapFilepath,
     }
   },
 }

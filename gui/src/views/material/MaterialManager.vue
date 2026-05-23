@@ -63,7 +63,7 @@
             <template v-if="activeVideos.has(m.id)">
               <video
                 :ref="el => setVideoRef(m.id, el)"
-                :src="$apiUrl(`/api/materials/${m.id}/file`)"
+                :src="getVideoUrl(m.id)"
                 controls
                 preload="auto"
                 class="material-player"
@@ -115,8 +115,11 @@
             <button class="btn btn-sm btn-danger" @click="deleteMaterial(m)" title="删除">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
-            <button v-if="m.type === 'video'" class="btn btn-sm btn-warning" @click="eraseSubtitle(m)" :disabled="erasingMaterialId === m.id" title="擦除字幕">
+            <button v-if="m.type === 'video' && !m.cms_filepath" class="btn btn-sm btn-warning" @click="eraseSubtitle(m)" :disabled="erasingMaterialId === m.id" title="擦除字幕">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="7" y1="10" x2="17" y2="10"/><line x1="7" y1="14" x2="13" y2="14"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+            </button>
+            <button v-if="m.type === 'video' && m.cms_filepath" class="btn btn-sm btn-info" @click="swapFilepath(m)" title="切换原始/擦除文件">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
             </button>
           </div>
         </div>
@@ -146,7 +149,8 @@
                 <button class="btn btn-xs btn-primary" @click="openEdit(m)" title="编辑">编辑</button>
                 <button class="btn btn-xs btn-default" @click="showMoveFolder(m, 'material')" title="移动">移动</button>
                 <button class="btn btn-xs btn-info" @click="exportItem(m.id)" :disabled="exporting" title="导出">导出</button>
-                <button v-if="m.type === 'video'" class="btn btn-xs btn-warning" @click="eraseSubtitle(m)" :disabled="erasingMaterialId === m.id" title="擦除字幕">擦除</button>
+                <button v-if="m.type === 'video' && !m.cms_filepath" class="btn btn-xs btn-warning" @click="eraseSubtitle(m)" :disabled="erasingMaterialId === m.id" title="擦除字幕">擦除</button>
+                <button v-if="m.type === 'video' && m.cms_filepath" class="btn btn-xs btn-info" @click="swapFilepath(m)" title="切换原始/擦除文件">切换</button>
                 <button class="btn btn-xs btn-danger" @click="deleteMaterial(m)" title="删除">删除</button>
               </td>
             </tr>

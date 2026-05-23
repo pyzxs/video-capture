@@ -25,3 +25,4 @@ release/
 gui/public
 scripts/upx.exe
 output
+gen_config_enc.py
