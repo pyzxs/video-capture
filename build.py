@@ -9,6 +9,7 @@
 
 import argparse
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -16,8 +17,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DIST_DIR = ROOT / "dist"
-VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
+
+IS_WIN = platform.system() == "Windows"
+IS_MAC = platform.system() == "Darwin"
+
+# venv 下的 python 路径因平台而异
+if IS_WIN:
+    VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
+else:
+    VENV_PYTHON = ROOT / ".venv" / "bin" / "python"
 PYTHON = str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
+
+# 可执行文件扩展名
+EXE_SUFFIX = ".exe" if IS_WIN else ""
 
 # PyInstaller 不会自动检测的隐藏导入
 HIDDEN_IMPORTS = [
@@ -111,11 +123,12 @@ def run(cmd, **kwargs):
 
 def find_upx() -> str | None:
     """查找 UPX 可执行文件路径。"""
-    for name in ["upx.exe", "upx"]:
+    names = ["upx.exe", "upx"] if IS_WIN else ["upx"]
+    for name in names:
         local = ROOT / "scripts" / name
         if local.exists():
             return str(local)
-    for name in ["upx.exe", "upx"]:
+    for name in names:
         found = shutil.which(name)
         if found:
             return found
@@ -182,9 +195,6 @@ def build(use_upx: bool = False, console: bool = False):
     shutil.rmtree(DIST_DIR, ignore_errors=True)
     clean_artifacts()
 
-    # 生成版本信息
-    version_file = write_version_file()
-
     pyi_args = [
         PYTHON, "-m", "PyInstaller",
         "--distpath", str(DIST_DIR),
@@ -194,14 +204,20 @@ def build(use_upx: bool = False, console: bool = False):
         "--onedir",
         "--clean",
         "--noconfirm",
-        "--version-file", version_file,
     ]
 
-    # 控制台窗口：默认关闭（减少杀软误报），调试时用 --console 开启
-    if console:
-        pyi_args += ["--console"]
-    else:
-        pyi_args += ["--windowed"]
+    # Windows 专属：版本信息资源文件
+    if IS_WIN:
+        version_file = write_version_file()
+        pyi_args += ["--version-file", version_file]
+
+    # 控制台窗口：Windows 上默认关闭（减少杀软误报），调试时用 --console 开启
+    # macOS/Linux 上 --windowed/--console 不适用（PyInstaller 在这两个平台上忽略这些参数）
+    if IS_WIN:
+        if console:
+            pyi_args += ["--console"]
+        else:
+            pyi_args += ["--windowed"]
 
     # UPX 压缩：默认关闭（UPX 是杀软误报的首要原因），用 --upx 手动开启
     if use_upx:
@@ -260,7 +276,7 @@ def build(use_upx: bool = False, console: bool = False):
     clean_artifacts()
 
     out_dir = DIST_DIR / "video-capture-server"
-    exe = out_dir / "video-capture-server.exe"
+    exe = out_dir / f"video-capture-server{EXE_SUFFIX}"
     if not exe.exists():
         print(f"\n  错误: 未找到 {exe}")
         sys.exit(1)
@@ -274,10 +290,11 @@ def build(use_upx: bool = False, console: bool = False):
     print(f"\n  * 打包完成 -> {exe}")
     print(f"  * 输出目录大小: {size_mb:.2f} MB")
 
-    if not console:
+    if not console and IS_WIN:
         print(f"\n  注意: --windowed 模式下无控制台窗口，日志请查看 %APPDATA%/Video Capture/logs/")
 
-    create_start_script(out_dir)
+    if IS_WIN:
+        create_start_script(out_dir)
 
 
 def create_start_script(out_dir: Path):

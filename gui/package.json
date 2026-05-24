@@ -17,6 +17,7 @@
     "@vitejs/plugin-vue": "^5.0.0",
     "concurrently": "^9.0.0",
     "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
     "rcedit": "^5.0.1",
     "vite": "^5.4.0",
     "wait-on": "^8.0.0"
@@ -45,18 +46,44 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         },
         {
           "target": "zip",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "icon": "video-capture.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "video-capture.icns",
+      "category": "public.app-category.video",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "video-capture.png",
+      "category": "Video"
     },
     "nsis": {
       "oneClick": false,

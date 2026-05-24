@@ -1,0 +1,84 @@
+name: Build & Package (Win / Mac / Linux)
+
+on:
+  push:
+    tags: ['v*']           # 推送版本标签时自动构建
+  workflow_dispatch:        # 支持手动触发
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}-${{ matrix.arch }}
+    strategy:
+      fail-fast: false     # 一个平台失败不影响其他
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            arch: x64
+          - os: macos-latest
+            platform: mac
+            arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # ── 1. 检出代码 ──
+      - uses: actions/checkout@v4
+
+      # ── 2. 设置 Node.js ──
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── 3. 设置 Python ──
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      # ── 4. Linux 系统依赖 (AppImage 需要) ──
+      - if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+
+      # ── 5. 安装 Python 依赖 ──
+      - name: Install Python dependencies
+        run: pip install -e .
+
+      # ── 6. 下载平台对应的 ffmpeg 二进制 ──
+      - name: Download ffmpeg
+        shell: bash
+        run: bash scripts/download-ffmpeg.sh
+
+      # ── 7. PyInstaller 打包 Python 后端 → dist/video-capture-server/ ──
+      - name: Build Python backend
+        run: python build.py
+
+      # ── 8. 安装前端依赖 ──
+      - name: Install GUI dependencies
+        working-directory: gui
+        run: npm install
+
+      # ── 9. electron-builder 打包 ──
+      - name: Build Electron app
+        working-directory: gui
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"   # 跳过 macOS 代码签名
+        run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }}
+
+      # ── 10. 上传产物 ──
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Video-Capture-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            gui/release/*.exe
+            gui/release/*.zip
+            gui/release/*.dmg
+            gui/release/*.AppImage
+            gui/release/*.deb
+          if-no-files-found: error
+          retention-days: 30
