@@ -52,8 +52,7 @@ jobs:
             libxtst6 \
             xdg-utils \
             libatspi2.0-0 \
-            libsecret-1-0 \
-            libasound2
+            libsecret-1-0
 
       # ── 5. 安装 Python 依赖 ──
       - name: Install Python dependencies
