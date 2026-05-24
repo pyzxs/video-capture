@@ -405,7 +405,7 @@ const mdInsertText = (before, after) => {
 
     const eraseSubtitle = async (m) => {
       if (!await toast.confirm(
-        `确定要擦除素材「${m.filename || m.content?.slice(0, 20) || '#' + m.id}」的字幕吗？\n\n费用：每分钟 ¥1\n注意：1 分钟视频约需处理 15 分钟，请耐心等待`
+        `确定要擦除素材「${m.filename || m.content?.slice(0, 20) || '#' + m.id}」的字幕吗？\n\n注意：1 分钟视频约需处理 15 分钟，请耐心等待`
       )) return
       erasingMaterialId.value = m.id
       try {
