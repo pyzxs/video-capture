@@ -1063,6 +1063,34 @@ export default {
     })
     const playheadLeft = computed(() => getGridPixel(trackScale.value, playStartFrame.value))
 
+    // ── Timeline content width (drives horizontal scrollbar) ──
+    const timelineContentWidth = computed(() => {
+      let maxEnd = 0
+      for (const line of trackLines.value) {
+        const list = line.list || []
+        for (const clip of list) {
+          maxEnd = Math.max(maxEnd, clip.end || 0)
+        }
+        // Group track cards also contribute width
+        if (line.type === 'group' && line.groups) {
+          for (const g of line.groups) {
+            const vidIds = g.groupVideos || []
+            if (vidIds.length > 0) {
+              const firstVid = list.find(c => c.id === vidIds[0])
+              if (firstVid) {
+                const cardEnd = (g.cardStart || 0) + (firstVid.end - firstVid.start)
+                maxEnd = Math.max(maxEnd, cardEnd)
+              }
+            }
+          }
+        }
+      }
+      // Right padding so playhead can go past the last clip.
+      // Return 0 when no clips exist so CSS min-width:100% takes over.
+      if (maxEnd === 0) return 0
+      return getGridPixel(trackScale.value, maxEnd) + 400
+    })
+
     // ── Playback ──
 
     watch(selectLine, () => { selectIndex.value = -1 })
@@ -1312,7 +1340,15 @@ export default {
 
     // Helper: create a clip object from a material at given start frame
     const createClipFromMaterial = (m, startFrame) => {
-      const frames = m.type === 'image' ? 150 : 300
+      // Use actual material duration instead of a fixed frame count
+      let frames
+      if (m.type === 'image') {
+        frames = 150
+      } else {
+        const durSec = (m.end_time || 0) - (m.start_time || 0)
+        const fps = m.frame_rate || 30
+        frames = durSec > 0 ? Math.round(durSec * fps) : 300
+      }
       return {
         id: genId(),
         type: m.type,
@@ -1349,7 +1385,7 @@ export default {
     // Helper: append clip to a specific track and select it
     const addClipToTrack = (clip, track) => {
       const lastClip = track.list[track.list.length - 1]
-      const newStart = lastClip ? lastClip.end + 1 : 0
+      const newStart = lastClip ? lastClip.end : 0
       const duration = clip.frameCount
       clip.start = newStart
       clip.end = newStart + duration
@@ -1431,7 +1467,7 @@ export default {
       for (const line of trackLines.value) {
         if (line.type === m.type && !line.locked) {
           const lastClip = line.list[line.list.length - 1]
-          const newStart = lastClip ? lastClip.end + 1 : 0
+          const newStart = lastClip ? lastClip.end : 0
           clip.start = newStart
           clip.end = newStart + frames
           line.list.push({ ...clip })
@@ -1502,7 +1538,7 @@ export default {
         trackLines.value.splice(getTrackInsertIndex('text'), 0, targetLine)
       }
       const lastClip = targetLine.list[targetLine.list.length - 1]
-      const newStart = lastClip ? lastClip.end + 1 : 0
+      const newStart = lastClip ? lastClip.end : 0
       clip.start = newStart
       clip.end = newStart + frames
       targetLine.list.push({ ...clip })
@@ -2847,7 +2883,7 @@ export default {
       dragClipId, trackListRef, trackRowsRef, trackIconsRef,
       rulerCanvas, rulerWrapRef,
       playerZoom, playerRatioIndex, ratioOptions, zoomOptions, currentRatio,
-      getClipStyle, playheadLeft, trackHeightClass, trackTypeName,
+      getClipStyle, playheadLeft, timelineContentWidth, trackHeightClass, trackTypeName,
       trackIconComp, typeLabel,
       addToTimeline, onResourceClick, onResourceDoubleClick, addTextToTimeline, selectClip, deleteSelected, addTrack, deleteTrack, canDeleteTrack, canDeleteSelected, hasGroupTracks, splitClip,
       hasAudioTracks: canExtractSubtitles, extractingSubtitles, extractSubtitles, addGroupToTrack,

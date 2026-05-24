@@ -671,7 +671,7 @@
           </div>
           <!-- Track list -->
           <div class="track-list" ref="trackListRef" @scroll="onTrackScroll">
-            <div class="track-list-inner">
+            <div class="track-list-inner" :style="{ width: timelineContentWidth + 'px' }">
               <!-- Time ruler -->
               <div class="track-ruler-wrap">
                 <div class="track-icons-spacer"></div>

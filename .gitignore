@@ -20,7 +20,7 @@ _patch.py
 database
 model
 thumbnails
-sbin
+bin
 release/
 scripts/upx.exe
 output

@@ -357,19 +357,21 @@ def _build_filter_complex(
         clip_dur = clip.timeline_out - clip.timeline_in
         src_dur = clip.source_out - clip.source_in
 
-        # Build the layer filter chain
+        # Build the layer filter chain.
+        # setpts=PTS-STARTPTS resets source timestamps to zero regardless of
+        # the source file's original PTS (critical for segmented files).
+        # The second setpts shifts the clip to its timeline position.
         if clip.is_image:
-            # Image: loop to create continuous video, then trim to duration,
-            # then setpts to shift to timeline position
             trim_setpts = (
                 f"loop=-1:1:0,"
                 f"trim=duration={saf(src_dur)},"
+                f"setpts=PTS-STARTPTS,"
                 f"setpts=PTS-STARTPTS+{saf(clip.timeline_in)}/TB"
             )
         else:
-            # Video: trim source range, then shift to timeline position
             trim_setpts = (
                 f"trim=start={saf(clip.source_in)}:duration={saf(src_dur)},"
+                f"setpts=PTS-STARTPTS,"
                 f"setpts=PTS-STARTPTS+{saf(clip.timeline_in)}/TB"
             )
 
@@ -413,7 +415,7 @@ def _build_filter_complex(
         enable = f"between(t,{saf(clip.timeline_in)},{saf(effective_out)})"
         parts.append(
             f"[{current_bg}][{layer_label}]"
-            f"overlay={ox}:{oy}:enable='{enable}':eof_action=pass"
+            f"overlay={ox}:{oy}:enable='{enable}':eof_action=repeat"
             f"[{bg_next}]"
         )
 

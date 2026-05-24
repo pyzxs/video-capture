@@ -251,7 +251,7 @@ def search_and_generate(
                 "effect": "",
                 "transitionIn": None,
             })
-            current_frame += clip_duration_frames + 1
+            current_frame += clip_duration_frames
 
         tracks = [{"type": "video", "name": "主轨道", "list": material_list, "visible": True, "locked": False, "muted": True}]
         if audio_filepath and Path(audio_filepath).exists():
