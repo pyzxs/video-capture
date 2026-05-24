@@ -430,7 +430,7 @@ def _build_filter_complex(
             a_labels_str = "".join(a_labels)
             parts.append(
                 f"{a_labels_str}"
-                f"amix=inputs={mix_inputs}:duration=first:dropout_transition=0"
+                f"amix=inputs={mix_inputs}:duration=longest:dropout_transition=0"
                 f"[aout]"
             )
         else:

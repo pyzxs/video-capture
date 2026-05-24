@@ -175,7 +175,7 @@ export default {
     })
 
     const extractingSubtitles = ref(false)
-    const showSubtitles = ref(true)
+    const showSubtitles = ref(false)
 
     const toggleSubtitles = () => {
       if (!hasGroupTracks.value) return
