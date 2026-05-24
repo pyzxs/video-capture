@@ -200,12 +200,27 @@ keep_data:
     Goto done
 
 delete_data:
+    ; Kill all related processes that may hold file locks
+    DetailPrint "正在关闭相关进程..."
+    nsExec::ExecToLog 'taskkill /f /im "Video Capture.exe"'
     nsExec::ExecToLog 'taskkill /f /im video-capture-server.exe'
-    Sleep 1500
+    nsExec::ExecToLog 'taskkill /f /im ffmpeg.exe'
+    nsExec::ExecToLog 'taskkill /f /im ffprobe.exe'
+    nsExec::ExecToLog 'taskkill /f /im python.exe'
+    nsExec::ExecToLog 'taskkill /f /im pythonw.exe'
+    Sleep 3000
+
     ${If} ${FileExists} "$APPDATA\Video Capture"
-        RMDir /r /REBOOTOK "$APPDATA\Video Capture"
+        ; Delete files first, then directories (more reliable than RMDir /r alone)
+        DetailPrint "正在删除数据文件..."
+        nsExec::ExecToLog 'cmd /c del /f /s /q "$APPDATA\Video Capture\*.*" 2>nul'
+        nsExec::ExecToLog 'cmd /c for /d %%i in ("$APPDATA\Video Capture\*") do rd /s /q "%%i" 2>nul'
+        nsExec::ExecToLog 'cmd /c rd /s /q "$APPDATA\Video Capture" 2>nul'
+        Sleep 1000
+
         ${If} ${FileExists} "$APPDATA\Video Capture"
-            DetailPrint "部分文件无法立即删除，已安排在下次系统重启时清理"
+            RMDir /r /REBOOTOK "$APPDATA\Video Capture"
+            DetailPrint "部分文件被占用，已安排在下次系统重启时清理"
         ${Else}
             DetailPrint "已删除 %APPDATA%\Video Capture"
         ${EndIf}
