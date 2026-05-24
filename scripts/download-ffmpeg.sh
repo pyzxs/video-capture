@@ -3,8 +3,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BIN_DIR="$(cd "$SCRIPT_DIR/../bin" && pwd)"
+BIN_DIR="$SCRIPT_DIR/../bin"
 mkdir -p "$BIN_DIR"
+BIN_DIR="$(cd "$BIN_DIR" && pwd)"
 
 OS="$(uname -s)"
 
