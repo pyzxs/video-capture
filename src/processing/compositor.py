@@ -330,7 +330,16 @@ def _build_filter_complex(
     )
     current_bg = "bg0"
 
-    # ── Phase B & C: Per-clip layer + overlay ──
+    # ── Phase B: Pre-compute gap-fill end times ──
+    # Extend each clip's overlay to the next clip on the same track,
+    # eliminating black frames caused by 1-frame gaps.
+    def _next_same_track_start(this_i: int, this_track: int) -> Optional[float]:
+        for j in range(this_i + 1, len(video_clips)):
+            if video_clips[j].track_index == this_track:
+                return video_clips[j].timeline_in
+        return None
+
+    # ── Phase C: Per-clip layer + overlay ──
     for i, clip in enumerate(video_clips):
         if not clip.filepath or not Path(clip.filepath).exists():
             continue
@@ -395,8 +404,13 @@ def _build_filter_complex(
             f"[{layer_label}]"
         )
 
-        # Overlay this layer on the accumulated background
-        enable = f"between(t,{saf(clip.timeline_in)},{saf(clip.timeline_out)})"
+        # Overlay this layer on the accumulated background.
+        # Extend the enable window to the next clip on the same track so
+        # 1-frame (or larger) gaps don't show as black frames.
+        effective_out = _next_same_track_start(i, clip.track_index)
+        if effective_out is None or effective_out <= clip.timeline_out:
+            effective_out = clip.timeline_out
+        enable = f"between(t,{saf(clip.timeline_in)},{saf(effective_out)})"
         parts.append(
             f"[{current_bg}][{layer_label}]"
             f"overlay={ox}:{oy}:enable='{enable}':eof_action=pass"
