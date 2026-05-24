@@ -2,6 +2,9 @@
   "name": "video-capture-gui",
   "version": "1.0.0",
   "private": true,
+  "description": "Video Capture - 视频字幕提取、向量检索与字幕生成工具",
+  "author": "Video Capture Team <team@example.com>",
+  "homepage": "https://github.com/laozhu2048/video-capture",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
