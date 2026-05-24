@@ -15,6 +15,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Windows CI/终端可能使用 cp1252 编码，强制 UTF-8 避免中文打印报错
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent
 DIST_DIR = ROOT / "dist"
 

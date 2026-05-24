@@ -55,6 +55,8 @@ jobs:
 
       # ── 7. PyInstaller 打包 Python 后端 → dist/video-capture-server/ ──
       - name: Build Python backend
+        env:
+          PYTHONIOENCODING: utf-8
         run: python build.py
 
       # ── 8. 安装前端依赖 ──
