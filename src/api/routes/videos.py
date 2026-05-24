@@ -17,6 +17,7 @@ from src.api.services.video_service import (
     download_video_service,
     download_video_stream,
     dub_video_service,
+    extract_audio_to_material,
     get_video,
     get_video_file_path,
     get_video_status,
@@ -59,6 +60,12 @@ def _update_video(video_id: int, data: VideoUpdate, db: Session = Depends(get_db
 @router.post("/{video_id}/dub", description="为视频配音（TTS 合成 + 替换音轨）")
 def _dub_video(video_id: int, data: VideoDubRequest, db: Session = Depends(get_db)):
     return response_success(data=dub_video_service(db, video_id, data.voice), message="配音完成")
+
+
+@router.post("/{video_id}/extract-audio", status_code=201, description="从原始视频提取音频轨道，生成音频素材")
+def _extract_audio_to_material(video_id: int, db: Session = Depends(get_db)):
+    result = extract_audio_to_material(db, video_id)
+    return response_success(data=result, message="音频提取成功", status_code=201)
 
 
 @router.post("/upload", status_code=201)

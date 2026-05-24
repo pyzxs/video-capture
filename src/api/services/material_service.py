@@ -314,6 +314,53 @@ def swap_material_filepath(db: Session, material_id: int) -> Material:
     return m
 
 
+def extract_audio_from_material(db: Session, material_id: int) -> Material:
+    """Extract audio track from a video material and create an audio material."""
+    from src.processing.ffmpeg import FFMPEG, extract_audio as ffmpeg_extract_audio
+
+    source = db.query(Material).get(material_id)
+    if not source:
+        raise fail_response(status_code=404, message="素材不存在")
+    if source.type != "video":
+        raise fail_response(status_code=400, message="仅视频素材支持提取音频")
+    if not source.filepath or not Path(source.filepath).exists():
+        raise fail_response(status_code=404, message="源文件不存在")
+
+    src_path = Path(source.filepath)
+    out_name = f"{src_path.stem}_audio.mp3"
+    out_dir = ensure_date_dir(get_config("material_dir"))
+    out_path = out_dir / out_name
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        FFMPEG, "-i", str(src_path),
+        "-vn", "-c:a", "libmp3lame", "-q:a", "2",
+        "-y", str(out_path),
+    ]
+    subprocess.run(cmd, check=True, capture_output=True, creationflags=_CREATIONFLAGS)
+
+    material = Material(
+        type="audio",
+        content=source.content or "",
+        start_time=0.0,
+        end_time=source.end_time,
+        filename=out_name,
+        filepath=str(out_path),
+        thumbnail="",
+        status=1,
+        folder_id=source.folder_id,
+    )
+    db.add(material)
+    db.commit()
+    db.refresh(material)
+
+    if source.content:
+        _index_material_content(material.id, source.content, material)
+
+    material.file_url = f"{API_BASE_URL}/api/materials/{material.id}/file"
+    return material
+
+
 def create_material_from_segment(
     db: Session,
     source_id: int,

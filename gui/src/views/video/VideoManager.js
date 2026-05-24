@@ -61,6 +61,7 @@ export default {
     }
 
     const exporting = ref(false)
+    const extractingVideoId = ref(null)
     const doExport = async (ids) => {
       if (ids.length === 0) return
       let destDir = ''
@@ -596,6 +597,18 @@ export default {
       }
     }
 
+    const extractAudio = async (v) => {
+      extractingVideoId.value = v.id
+      try {
+        const res = await videoApi.extractAudio(v.id)
+        toast.success(`音频已提取为素材: ${res.data?.filename || ''}`)
+      } catch (e) {
+        toast.error('提取音频失败: ' + (e.response?.data?.message || e.response?.data?.detail || e.message))
+      } finally {
+        extractingVideoId.value = null
+      }
+    }
+
     // ── Edit ──
     const openEdit = (v) => {
       editingVideo.value = v
@@ -892,7 +905,7 @@ export default {
       openDownload, closeDownload, startDownload,
       showEdit, showEditPreview, editForm, editingVideo, saving, mdTextarea,
       openEdit, closeEdit, saveEdit, saveToNote, savingToNote, startDub, dubbing, mdInsert, mdLink, renderMarkdown,
-      copyContent, deleteVideo,
+      copyContent, extractAudio, extractingVideoId, deleteVideo,
       activeVideos, activateVideo, setVideoRef, onVideoLoaded, onVideoPlay,
       hoverPlay, hoverPause,
       showSplit, splitStarted, splitState, splitSteps, splitDoing, splitDoingText, splitError,

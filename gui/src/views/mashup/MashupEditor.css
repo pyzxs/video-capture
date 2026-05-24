@@ -398,6 +398,7 @@
 .track-row.th-audio { height: 36px; }
 .track-row.th-image { height: 36px; }
 .track-row.th-text { height: 30px; }
+.track-row.th-subtitle { height: 30px; }
 
 /* Track clip */
 .track-clip {
@@ -459,11 +460,13 @@
 .th-audio { height: 48px; }
 .th-image { height: 48px; }
 .th-text { height: 32px; }
+.th-subtitle { height: 32px; }
 
 .track-icon-item.th-video { height: 38px; }
 .track-icon-item.th-audio { height: 36px; }
 .track-icon-item.th-image { height: 36px; }
 .track-icon-item.th-text { height: 30px; }
+.track-icon-item.th-subtitle { height: 30px; }
 
 /* ── Upload Dialog ── */
 :deep(.modal) { max-width: 520px; }

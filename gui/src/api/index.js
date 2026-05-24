@@ -94,6 +94,7 @@ export const videoApi = {
   smartSplitStream: (id, data, onProgress, onComplete, onError) =>
     _sseStream(`/api/videos/${id}/split/smart/stream`, data, onProgress, onComplete, onError),
   saveToNote: (id) => api.post(`/videos/${id}/save-to-notes`),
+  extractAudio: (id) => api.post(`/videos/${id}/extract-audio`, null, { timeout: 300000 }),
   rewriteChat: (id, data) => api.post(`/videos/${id}/rewrite-chat`, data, { timeout: 120000 }),
   dub: (id, data) => api.post(`/videos/${id}/dub`, data, { timeout: 600000 }),
 }
@@ -125,6 +126,7 @@ export const materialApi = {
   },
   eraseSubtitle: (id) => api.post(`/materials/${id}/subtitle-erase`, null, { timeout: 600000 }),
   swapFilepath: (id) => api.put(`/materials/${id}/swap-filepath`),
+  extractAudio: (id) => api.post(`/materials/${id}/extract-audio`, null, { timeout: 300000 }),
 }
 
 // ── Settings ──

@@ -422,6 +422,13 @@
                       @input="applyMultiProperty('scale', Number($event.target.value))" />
                     <span class="attr-range-val">{{ hasMixedValues('scale') ? '混合' : getMultiValue('scale') + '%' }}</span>
                   </label>
+                  <label class="attr-row">
+                    <span>不透明度</span>
+                    <input :value="hasMixedValues('opacity') ? 100 : getMultiValue('opacity')"
+                      class="attr-input" type="range" min="0" max="100"
+                      @input="applyMultiProperty('opacity', Number($event.target.value))" />
+                    <span class="attr-range-val">{{ hasMixedValues('opacity') ? '混合' : (getMultiValue('opacity') || 100) + '%' }}</span>
+                  </label>
                 </div>
                 <div class="attr-group">
                   <div class="attr-group-title">文字样式</div>
@@ -520,6 +527,11 @@
                     <span>缩放</span>
                     <input v-model.number="selectedClip.scale" class="attr-input" type="range" min="10" max="200" />
                     <span class="attr-range-val">{{ selectedClip.scale }}%</span>
+                  </label>
+                  <label class="attr-row">
+                    <span>不透明度</span>
+                    <input v-model.number="selectedClip.opacity" class="attr-input" type="range" min="0" max="100" />
+                    <span class="attr-range-val">{{ selectedClip.opacity || 100 }}%</span>
                   </label>
                 </div>
                 <div v-if="selectedClip.type === 'text'" class="attr-group">

@@ -101,6 +101,9 @@
             <button class="btn btn-sm btn-success" @click="copyContent(v)" title="复制文案">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             </button>
+            <button class="btn btn-sm btn-warning" @click="extractAudio(v)" :disabled="extractingVideoId === v.id" title="提取音频">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            </button>
             <button class="btn btn-sm btn-info" @click="exportItem(v.id)" :disabled="exporting" title="导出">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
@@ -140,6 +143,7 @@
                 <button class="btn btn-xs btn-primary" @click="openSplit(v)" title="分割">分割</button>
                 <button class="btn btn-xs btn-default" @click="showMoveFolder(v, 'video')" title="移动">移动</button>
                 <button class="btn btn-xs btn-success" @click="copyContent(v)" title="复制文案">复制</button>
+                <button class="btn btn-xs btn-warning" @click="extractAudio(v)" :disabled="extractingVideoId === v.id" title="提取音频">音频</button>
                 <button class="btn btn-xs btn-info" @click="exportItem(v.id)" :disabled="exporting" title="导出">导出</button>
                 <button class="btn btn-xs btn-danger" @click="deleteVideo(v)" title="删除">删除</button>
               </td>

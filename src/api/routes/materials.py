@@ -13,6 +13,7 @@ from src.api.services.material_service import (
     create_material_json,
     create_material_with_file,
     delete_material,
+    extract_audio_from_material,
     get_material,
     get_material_file_path,
     list_materials,
@@ -126,6 +127,11 @@ def _submit_material_subtitle_erase(
 @router.put("/{material_id}/swap-filepath", description="切换 filepath 和 cms_filepath（原始文件 ↔ 擦除后文件）")
 def _swap_material_filepath(material_id: int, db: Session = Depends(get_db)):
     return swap_material_filepath(db, material_id)
+
+
+@router.post("/{material_id}/extract-audio", status_code=201, description="从视频素材提取音频轨道，生成音频素材")
+def _extract_audio_from_material(material_id: int, db: Session = Depends(get_db)):
+    return extract_audio_from_material(db, material_id)
 
 
 @router.get("/subtitle-erase/{task_id}", description="查询字幕擦除任务状态")

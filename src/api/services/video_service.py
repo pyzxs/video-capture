@@ -412,6 +412,55 @@ def smart_split_extract_audio(db: Session, video_id: int) -> dict:
     }
 
 
+def extract_audio_to_material(db: Session, video_id: int):
+    """从原始视频提取音频轨道，创建为音频素材。"""
+    from src.config import API_BASE_URL, get_config as _get_config
+    from src.db.models import Material
+    from src.processing.ffmpeg import FFMPEG
+    from src.utils import ensure_date_dir, _CREATIONFLAGS
+
+    v = db.query(Video).get(video_id)
+    if not v:
+        raise fail_response(status_code=404, message="视频不存在")
+    if not Path(v.filepath).exists():
+        raise fail_response(status_code=404, message="视频文件不存在")
+
+    src_path = Path(v.filepath)
+    out_name = f"{src_path.stem}_audio.mp3"
+    out_path = ensure_date_dir(_get_config("material_dir"), out_name)
+
+    cmd = [
+        FFMPEG, "-i", str(src_path),
+        "-vn", "-c:a", "libmp3lame", "-q:a", "2",
+        "-y", str(out_path),
+    ]
+    subprocess.run(cmd, check=True, capture_output=True, creationflags=_CREATIONFLAGS)
+
+    material = Material(
+        type="audio",
+        content=v.content or "",
+        start_time=0.0,
+        end_time=v.duration or 0.0,
+        filename=out_name,
+        filepath=str(out_path),
+        thumbnail="",
+        status=1,
+        folder_id=v.folder_id,
+    )
+    db.add(material)
+    db.commit()
+    db.refresh(material)
+
+    return {
+        "id": material.id,
+        "type": material.type,
+        "filename": material.filename,
+        "duration": material.end_time,
+        "folder_id": material.folder_id,
+        "file_url": f"{API_BASE_URL}/api/materials/{material.id}/file",
+    }
+
+
 def smart_split_analyze(db: Session, video_id: int, audio_path: str | None, language: str) -> dict:
     import json as json_mod
     from src.processing.asr import transcribe

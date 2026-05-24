@@ -101,7 +101,7 @@
             </div>
             <div class="card-script" :title="g.script">{{ truncate(g.script, 60) || '-' }}</div>
             <div class="card-actions">
-              <button v-if="g.status !== 'completed'" class="btn btn-sm btn-primary" @click="openEdit(g)" title="编辑">
+              <button class="btn btn-sm btn-primary" @click="openEdit(g)" title="编辑">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               </button>
               <button class="btn btn-sm btn-info" @click="exportItem(g.id)" :disabled="exporting" title="导出">
@@ -146,7 +146,7 @@
                 <td class="list-col-script" :title="g.script">{{ truncate(g.script, 60) || '-' }}</td>
                 <td class="list-col-time">{{ formatTime(g.created_at) }}</td>
                 <td class="list-col-actions">
-                  <button v-if="g.status !== 'completed'" class="btn btn-xs btn-primary" @click="openEdit(g)" title="编辑">编辑</button>
+                  <button class="btn btn-xs btn-primary" @click="openEdit(g)" title="编辑">编辑</button>
                   <button class="btn btn-xs btn-default" @click="copyScript(g)" title="复制文案">文案</button>
                   <button class="btn btn-xs btn-success" @click="genVideo(g)" :disabled="g.status==='processing'" title="生成">生成</button>
                   <button class="btn btn-xs btn-info" @click="exportItem(g.id)" :disabled="exporting" title="导出">导出</button>

@@ -49,6 +49,7 @@ const icons = {
   audio: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('path', { d: 'M9 18V5l12-2v13' }), h('circle', { cx: '6', cy: '18', r: '3' }), h('circle', { cx: '18', cy: '16', r: '3' })]) } },
   text: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('polyline', { points: '4 7 4 4 20 4 20 7' }), h('line', { x1: '9', y1: '20', x2: '15', y2: '20' }), h('line', { x1: '12', y1: '4', x2: '12', y2: '20' })]) } },
   group: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('rect', { x: '3', y: '3', width: '7', height: '7', rx: '1' }), h('rect', { x: '14', y: '3', width: '7', height: '7', rx: '1' }), h('rect', { x: '3', y: '14', width: '7', height: '7', rx: '1' }), h('rect', { x: '14', y: '14', width: '7', height: '7', rx: '1' })]) } },
+  subtitle: { render() { return h('svg', { viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' }, [h('rect', { x: '2', y: '4', width: '20', height: '16', rx: '2' }), h('line', { x1: '7', y1: '10', x2: '17', y2: '10' }), h('line', { x1: '7', y1: '14', x2: '14', y2: '14' })]) } },
 }
 
 export default {
@@ -496,7 +497,8 @@ export default {
               const preset = effectPresets.find(ep => ep.key === clip.effect)
               if (preset && preset.filter) ctx.filter = preset.filter
             }
-            if (tInfo) ctx.globalAlpha = tInfo.role === 'in' ? tInfo.progress : (1 - tInfo.progress)
+            if (tInfo) ctx.globalAlpha = (tInfo.role === 'in' ? tInfo.progress : (1 - tInfo.progress)) * ((clip.opacity ?? 100) / 100)
+            else ctx.globalAlpha = (clip.opacity ?? 100) / 100
             ctx.beginPath()
             ctx.rect(frameX, frameY, frameW, frameH)
             ctx.clip()
@@ -575,7 +577,8 @@ export default {
             const preset = effectPresets.find(ep => ep.key === clip.effect)
             if (preset && preset.filter) ctx.filter = preset.filter
           }
-          if (tInfo) ctx.globalAlpha = tInfo.role === 'in' ? tInfo.progress : (1 - tInfo.progress)
+          if (tInfo) ctx.globalAlpha = (tInfo.role === 'in' ? tInfo.progress : (1 - tInfo.progress)) * ((clip.opacity ?? 100) / 100)
+          else ctx.globalAlpha = (clip.opacity ?? 100) / 100
           ctx.beginPath()
           ctx.rect(frameX, frameY, frameW, frameH)
           ctx.clip()
@@ -670,7 +673,8 @@ export default {
             const preset = effectPresets.find(ep => ep.key === clip.effect)
             if (preset && preset.filter) ctx.filter = preset.filter
           }
-          if (tInfo) ctx.globalAlpha = tInfo.role === 'in' ? tInfo.progress : (1 - tInfo.progress)
+          if (tInfo) ctx.globalAlpha = (tInfo.role === 'in' ? tInfo.progress : (1 - tInfo.progress)) * ((clip.opacity ?? 100) / 100)
+          else ctx.globalAlpha = (clip.opacity ?? 100) / 100
           ctx.beginPath()
           ctx.rect(frameX, frameY, frameW, frameH)
           ctx.clip()
@@ -1160,7 +1164,7 @@ export default {
     // ── Track height utilities ──
     const trackHeightMap = { video: 64, audio: 48, image: 48, text: 32 }
     const trackHeightClass = (t) => `th-${t}`
-    const trackTypeName = (t) => ({ video: '视频轨道', audio: '音频轨道', image: '图片轨道', text: '文字轨道', group: '素材组' }[t] || t)
+    const trackTypeName = (t) => ({ video: '视频轨道', audio: '音频轨道', image: '图片轨道', text: '文字轨道', subtitle: '字幕轨道', group: '素材组' }[t] || t)
     const trackIconComp = (t) => icons[t] || icons.video
     const typeLabel = (t) => ({ video: '视频', image: '图片', scene: '场景', audio: '音频', text: '文字' }[t] || t || '素材')
 
@@ -1323,6 +1327,7 @@ export default {
         centerX: 50,
         centerY: 50,
         scale: 100,
+        opacity: 100,
         width: m.frame_width || 1920,
         height: m.frame_height || 1080,
         fontSize: 48,
@@ -1377,7 +1382,7 @@ export default {
       // If a non-group track is selected, add to that track
       if (selectLine.value >= 0 && selectIndex.value < 0) {
         const selTrack = trackLines.value[selectLine.value]
-        if (selTrack && selTrack.type !== 'group' && !selTrack.locked) {
+        if (selTrack && selTrack.type !== 'group' && !selTrack.locked && !hasGroupTracks.value) {
           const clip = createClipFromMaterial(m, 0)
           addClipToTrack(clip, selTrack)
           return
@@ -1417,6 +1422,8 @@ export default {
           return
         }
       }
+      // Group tracks are exclusive with regular tracks: don't fall through
+      if (hasGroupTracks.value) return
       const clip = createClipFromMaterial(m, 0)
       const frames = clip.frameCount
       // Find best track and position
@@ -1454,6 +1461,7 @@ export default {
     const addTextToTimeline = () => {
       const txt = textForm.value.content.trim()
       if (!txt) return
+      if (hasGroupTracks.value) return
       const preset = textStylePresets[textForm.value.styleIndex] || textStylePresets[0]
       const frames = 300
       const clip = {
@@ -1626,6 +1634,7 @@ export default {
 
     const addTrack = () => {
       if (generating.value) return
+      if (hasGroupTracks.value) return
       const type = 'video'
       trackLines.value.splice(getTrackInsertIndex(type), 0, makeTrack(type))
       toast.success(`已添加${trackTypeName(type)}`)
@@ -1813,7 +1822,7 @@ export default {
         content: m.content, filepath: m.filepath,
         start: cursor, end: cursor + frames, frameCount: frames,
         offsetL: 0, offsetR: 0,
-        centerX: 50, centerY: 50, scale: 100,
+        centerX: 50, centerY: 50, scale: 100, opacity: 100,
         width: m.frame_width || 1920, height: m.frame_height || 1080,
         fontSize: 48, fontFamily: 'sans-serif', fontColor: '#ffffff',
         bold: false, italic: false, shadow: false, outline: false,
@@ -1843,7 +1852,7 @@ export default {
         content: m.content, filepath: m.filepath,
         start: cursor, end: cursor + frames, frameCount: frames,
         offsetL: 0, offsetR: 0,
-        centerX: 50, centerY: 50, scale: 100,
+        centerX: 50, centerY: 50, scale: 100, opacity: 100,
         width: m.frame_width || 1920, height: m.frame_height || 1080,
         fontSize: 48, fontFamily: 'sans-serif', fontColor: '#ffffff',
         bold: false, italic: false, shadow: false, outline: false,
@@ -2197,18 +2206,11 @@ export default {
       // Track clip being dragged from another track → ignore on non-group tracks
       if (dragData._fromTrack) return
 
-      // Resource panel material: add to this specific track
-      const scrollArea = trackRowsRef.value?.querySelector('.track-scroll-area')
-      const rect = scrollArea ? scrollArea.getBoundingClientRect() : trackRowsRef.value.getBoundingClientRect()
-      const x = ev.clientX - rect.left + scrollLeft
-      const startFrame = getSelectFrame(x, trackScale.value)
+      // Resource panel material: append to this track (no overlap)
       const m = dragData
-      const clip = createClipFromMaterial(m, startFrame)
-      track.list.push(clip)
-      selectLine.value = li
-      selectIndex.value = track.list.length - 1
+      const clip = createClipFromMaterial(m, 0)
+      addClipToTrack(clip, track)
       dragData = null
-      updateTotalFrames()
     }
 
     // ── Clip mouse drag (move) ──
@@ -2225,13 +2227,23 @@ export default {
     }
     const onMoveMove = (ev) => {
       if (!moveState) return
-      const clip = trackLines.value[moveState.li]?.list[moveState.ci]
+      const track = trackLines.value[moveState.li]
+      const clip = track?.list[moveState.ci]
       if (!clip) return
       const dx = ev.clientX - moveState.startX
       const frameDelta = Math.round(dx / Math.max(getGridPixel(trackScale.value, 1), 1))
       const origDuration = moveState.origEnd - moveState.origStart
-      clip.start = Math.max(0, moveState.origStart + frameDelta)
-      clip.end = clip.start + origDuration
+      let newStart = Math.max(0, moveState.origStart + frameDelta)
+
+      // Prevent overlap: clips on the same track cannot overlap
+      const prevClip = moveState.ci > 0 ? track.list[moveState.ci - 1] : null
+      const nextClip = moveState.ci < track.list.length - 1 ? track.list[moveState.ci + 1] : null
+      if (prevClip && newStart < prevClip.end) newStart = prevClip.end
+      if (nextClip && newStart + origDuration > nextClip.start) newStart = nextClip.start - origDuration
+      newStart = Math.max(0, newStart)
+
+      clip.start = newStart
+      clip.end = newStart + origDuration
       updateTotalFrames()
 
       // Vertical: detect track switch while dragging
@@ -2361,12 +2373,13 @@ export default {
             locked: line.locked || false,
             muted: line.muted || false,
             list: line.list.map(c => ({
-              id: c.id, type: c.type, material_id: c.material_id,
-              content: c.content, filepath: c.filepath,
+              id: c.id, type: c.type, materialId: c.material_id,
+              ...(c.type === 'text' ? { content: c.content } : {}),
+              filepath: c.filepath,
               start: c.start, end: c.end, frameCount: c.frameCount,
               offsetL: c.offsetL, offsetR: c.offsetR,
               centerX: c.centerX, centerY: c.centerY,
-              scale: c.scale, width: c.width, height: c.height,
+              scale: c.scale, opacity: c.opacity ?? 100, width: c.width, height: c.height,
               fontSize: c.fontSize, fontFamily: c.fontFamily, fontColor: c.fontColor,
               bold: c.bold, italic: c.italic, shadow: c.shadow,
               outline: c.outline, outlineColor: c.outlineColor,
@@ -2672,6 +2685,7 @@ export default {
             visible: t.visible !== false,
             locked: t.locked || false,
             muted: t.muted || false,
+            list: (t.list || []).map(c => ({ ...c, material_id: c.materialId ?? c.material_id, opacity: c.opacity ?? 100, scale: c.scale ?? 100, centerX: c.centerX ?? 50, centerY: c.centerY ?? 50, effect: c.effect || '' })),
             groups: (t.groups || []).map(g => ({
               name: g.name || '',
               groupVideos: g.groupVideos || [],
