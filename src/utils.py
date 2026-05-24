@@ -1,6 +1,7 @@
 """纯工具函数：时间格式转换、SRT/ASS 字幕解析。"""
 import mimetypes
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -11,17 +12,19 @@ from src.config import API_BASE_URL, BASE_DIR
 
 _CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
-if getattr(sys, 'frozen', False):
-    _bin_dir = Path(sys.executable).parent / "bin"
-else:
-    _bin_dir = Path(BASE_DIR) / "bin"
-
+# ffmpeg/ffprobe 路径：
+#   Windows：打包时捆绑在 backend/bin/ 下，开发时在项目 bin/ 下
+#   macOS/Linux：使用系统 PATH 中的 ffmpeg（用户自行安装）
 if sys.platform == "win32":
+    if getattr(sys, 'frozen', False):
+        _bin_dir = Path(sys.executable).parent / "bin"
+    else:
+        _bin_dir = Path(BASE_DIR) / "bin"
     _ffmpeg_bin = str(_bin_dir / "ffmpeg.exe")
     _ffprobe_bin = str(_bin_dir / "ffprobe.exe")
 else:
-    _ffmpeg_bin = str(_bin_dir / "ffmpeg")
-    _ffprobe_bin = str(_bin_dir / "ffprobe")
+    _ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    _ffprobe_bin = shutil.which("ffprobe") or "ffprobe"
 
 
 def get_ffmpeg_path() -> str:

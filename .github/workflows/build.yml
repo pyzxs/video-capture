@@ -1,5 +1,8 @@
 name: Build & Package (Win / Mac / Linux)
 
+permissions:
+  contents: write          # 允许创建 Release
+
 on:
   push:
     tags: ['v*']           # 推送版本标签时自动构建
@@ -60,8 +63,9 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: pip install -e .
 
-      # ── 6. 下载平台对应的 ffmpeg 二进制 ──
-      - name: Download ffmpeg
+      # ── 6. Windows: 下载 ffmpeg 到 bin/（macOS/Linux 走系统 PATH）──
+      - if: matrix.platform == 'win'
+        name: Download ffmpeg (Windows)
         shell: bash
         run: bash scripts/download-ffmpeg.sh
 
@@ -110,3 +114,18 @@ jobs:
             gui/release/*.deb
           if-no-files-found: error
           retention-days: 30
+
+      # ── 13. 发布到 GitHub Release（仅 tag 推送时）──
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gui/release/*.exe
+            gui/release/*.zip
+            gui/release/*.dmg
+            gui/release/*.AppImage
+            gui/release/*.deb
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
